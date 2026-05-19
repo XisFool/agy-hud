@@ -12,12 +12,12 @@
 
 ## 🛠️ 安装
 
-### 官方推荐方法
+### 官方推荐方法 (一键直装)
 ```bash
-agy plugin install icebear0828/agy-hud
+agy plugin install https://github.com/icebear0828/agy-hud/releases/download/v0.1.0/agy-hud.zip
 ```
 
-### 手动开发安装
+### 手动克隆安装 (开发用)
 ```bash
 git clone https://github.com/icebear0828/agy-hud.git
 cd agy-hud
