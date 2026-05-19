@@ -8,7 +8,17 @@
 - **任务追踪**：实时同步项目进度。
 
 ## 🛠️ 安装
-（即将推出）
+```bash
+git clone https://github.com/user/agy-hud.git
+cd agy-hud
+./setup.sh
+```
+
+## ⚙️ 配置
+编辑 `agy-hud.config.json` 来进行个性化定制：
+- `theme`: 不同状态的颜色。
+- `display`: 开关 Token 进度条、面包屑路径或 Git 分支显示。
+- `thresholds`: 设置上下文消耗的警告/严重阈值。
 
 ## 📜 许可证
 MIT

@@ -8,7 +8,17 @@ A premium, multi-line terminal HUD for Antigravity CLI, inspired by `claude-hud`
 - **Task Tracking**: Stay updated on your project's progress.
 
 ## 🛠️ Installation
-(Coming Soon)
+```bash
+git clone https://github.com/user/agy-hud.git
+cd agy-hud
+./setup.sh
+```
+
+## ⚙️ Configuration
+Edit `agy-hud.config.json` to customize:
+- `theme`: Colors for different states.
+- `display`: Toggle Token Bar, Breadcrumbs, or Git Branch.
+- `thresholds`: Set warning/critical levels for context usage.
 
 ## 📜 License
 MIT
