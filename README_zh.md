@@ -14,7 +14,7 @@
 
 ### 官方推荐方法 (永久最新版)
 ```bash
-agy plugin install https://github.com/icebear0828/agy-hud/releases/latest/download/agy-hud.tgz
+agy plugin install https://github.com/icebear0828/agy-hud/releases/latest/download/agy-hud.zip
 ```
 
 ### 手动克隆安装 (开发用)
