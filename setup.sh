@@ -17,11 +17,11 @@ if [ -z "$NODE_PATH" ]; then
   exit 1
 fi
 
-# 2. Install dependencies
-echo "📦 Installing dependencies..."
-npm install --quiet
+# 2. Official Plugin Installation
+echo "🔌 Installing as an official agy plugin..."
+agy plugin install .
 
-# 3. Backup and update settings.json
+# 3. Backup and update settings.json (for statusLine specific rendering)
 if [ -f "$SETTINGS_FILE" ]; then
   echo "💾 Backing up settings.json to settings.json.bak..."
   cp "$SETTINGS_FILE" "$SETTINGS_FILE.bak"
