@@ -1,9 +1,7 @@
 {
   "name": "agy-hud",
-  "version": "1.0.0",
-  "description": "Premium status line HUD for Antigravity CLI",
-  "main": "src/index.mjs",
-  "config": "agy-hud.config.json",
-  "author": "icebear0828",
-  "capabilities": ["statusline"]
+  "version": "0.1.6",
+  "description": "Premium HUD for Antigravity CLI",
+  "entry": "index.js",
+  "hooks": "hooks/step_hooks.json"
 }

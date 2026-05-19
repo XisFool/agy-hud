@@ -1,0 +1,10 @@
+{
+  "mcpServers": {
+    "agy-hud": {
+      "command": "node",
+      "args": ["extensions/index.js"],
+      "disabled": false,
+      "autoApprove": []
+    }
+  }
+}
