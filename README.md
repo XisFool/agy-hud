@@ -2,14 +2,24 @@
 
 A premium, multi-line terminal HUD for Antigravity CLI, inspired by `claude-hud`.
 
-## 🚀 Features
-- **Real-time Status**: Monitor your agent's thinking and tool usage.
-- **Context Health**: Visual indicator of your conversation context usage.
-- **Task Tracking**: Stay updated on your project's progress.
+## ✨ Key Features (Beyond claude-hud)
+- **Official Plugin Support**: Native integration with `agy plugin` system.
+- **Git Intelligence**: Real-time branch and dirty-state detection.
+- **Event-Driven Hooks**: Ultra-low latency updates via `on_step_complete`.
+- **Dynamic Context Bar**: Smart color-coding based on configurable thresholds.
+- **Bilingual Interface**: Full support for English and Simplified Chinese.
+- **TDD Enforcement**: Built-in test suite and Git hooks for quality assurance.
 
 ## 🛠️ Installation
+
+### Official Method (Recommended)
 ```bash
-git clone https://github.com/user/agy-hud.git
+agy plugin install icebear0828/agy-hud
+```
+
+### Manual Method (Development)
+```bash
+git clone https://github.com/icebear0828/agy-hud.git
 cd agy-hud
 ./setup.sh
 ```
