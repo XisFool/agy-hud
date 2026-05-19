@@ -14,7 +14,7 @@ A premium, multi-line terminal HUD for Antigravity CLI, inspired by `claude-hud`
 
 ### Official Method (Recommended)
 ```bash
-agy plugin install https://github.com/icebear0828/agy-hud/releases/download/v0.1.0/agy-hud.zip
+agy plugin install https://github.com/icebear0828/agy-hud/releases/download/v0.1.1/agy-hud.tar.gz
 ```
 
 ### From GitHub (Direct Clone)
