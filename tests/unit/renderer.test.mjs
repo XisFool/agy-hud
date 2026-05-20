@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert';
-import { renderHUD } from '../../renderer.js';
+import { renderHUD } from '../../extensions/renderer.js';
 
 test('renderHUD should contain branch and steps', () => {
   const state = {

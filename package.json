@@ -9,14 +9,8 @@
   },
   "files": [
     "extensions",
-    "parser.js",
-    "renderer.js",
-    "quota.js",
-    "config.js",
-    "git.js",
     "skills",
     "plugin.json",
-    "agy-hud.config.json",
     "README.md",
     "package.json"
   ],

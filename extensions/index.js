@@ -19,7 +19,7 @@ function autoConfigureStatusLine() {
 
   try {
     const settingsPath = getSettingsPath();
-    const hudScriptPath = path.resolve(__dirname, '..', 'bin', 'agy-hud.js');
+    const hudScriptPath = path.resolve(__dirname, 'bin', 'agy-hud.js');
     const nodePath = process.execPath || 'node';
     const targetCommand = `"${nodePath}" "${hudScriptPath}"`;
 

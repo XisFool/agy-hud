@@ -14,7 +14,7 @@ echo "🗜️  Creating flattened .zip package..."
 rm -rf release_tmp
 mkdir -p release_tmp
 # Copy only whitelisted files (now from root and extensions)
-cp parser.js renderer.js config.js git.js plugin.json agy-hud.config.json package.json README.md gemini-extension.json release_tmp/
+cp plugin.json package.json README.md gemini-extension.json release_tmp/
 [ -d extensions ] && cp -r extensions release_tmp/ || true
 [ -d skills ] && cp -r skills release_tmp/ || true
 

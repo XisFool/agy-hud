@@ -4,16 +4,7 @@
   "description": "Premium HUD for Antigravity CLI",
   "main": "extensions/index.js",
   "pi": {
-    "extensions": [
-      "extensions/index.js",
-      "bin/agy-hud.js",
-      "parser.js",
-      "renderer.js",
-      "quota.js",
-      "config.js",
-      "git.js",
-      "agy-hud.config.json"
-    ],
+    "extensions": ["extensions"],
     "skills": ["skills/*.md"]
   }
 }
