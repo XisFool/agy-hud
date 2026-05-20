@@ -11,7 +11,8 @@
       "extensions/renderer.js",
       "extensions/quota.js",
       "extensions/config.js",
-      "extensions/git.js",
+      "extensions/paths.js",
+      "extensions/encoding.js",
       "extensions/statusline.js",
       "extensions/install-statusline.js",
       "extensions/agy-hud.config.json"

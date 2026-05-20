@@ -15,9 +15,18 @@
     "README.md",
     "package.json"
   ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/icebear0828/agy-hud.git"
+  },
+  "homepage": "https://github.com/icebear0828/agy-hud#readme",
+  "bugs": {
+    "url": "https://github.com/icebear0828/agy-hud/issues"
+  },
   "scripts": {
     "test": "node --test tests/unit/*.test.mjs",
-    "e2e": "node --test tests/e2e/**/*.test.mjs"
+    "e2e": "node --test tests/e2e/**/*.test.mjs",
+    "build:hook": "node hooks/build-hook.js"
   },
   "keywords": [
     "antigravity",

@@ -12,26 +12,14 @@
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
+const { getAntigravityRoots } = require('./paths.js');
 
 // ─── Cross-platform token discovery ──────────────────────────────────────────
 // agy stores its OAuth token in different locations depending on the environment.
 // We search in priority order; first readable file wins.
-const TOKEN_CANDIDATES = [
-  // Standard install (macOS / Linux via XDG override)
-  path.join(os.homedir(), '.gemini', 'antigravity-cli', 'antigravity-oauth-token'),
-  // XDG_DATA_HOME override (Linux)
-  process.env.XDG_DATA_HOME
-    ? path.join(process.env.XDG_DATA_HOME, 'antigravity-cli', 'antigravity-oauth-token')
-    : null,
-  // Windows: %APPDATA%\antigravity-cli\antigravity-oauth-token
-  process.env.APPDATA
-    ? path.join(process.env.APPDATA, 'antigravity-cli', 'antigravity-oauth-token')
-    : null,
-  // Windows: %LOCALAPPDATA%\antigravity-cli\antigravity-oauth-token
-  process.env.LOCALAPPDATA
-    ? path.join(process.env.LOCALAPPDATA, 'antigravity-cli', 'antigravity-oauth-token')
-    : null,
-].filter(Boolean);
+const TOKEN_CANDIDATES = getAntigravityRoots().map(root =>
+  path.join(root, 'antigravity-oauth-token')
+);
 
 const CACHE_PATH = path.join(os.tmpdir(), 'agy-hud-quota-cache.json');
 const CACHE_VERSION = 2;
@@ -60,8 +48,6 @@ const ENDPOINTS = [
   'https://daily-cloudcode-pa.googleapis.com',
   'https://cloudcode-pa.googleapis.com',
 ];
-
-const DEFAULT_PROJECT_ID = 'rising-fact-p41fc';
 
 // Models to show in the HUD — filtered from the full list, de-duped by quota bucket
 const INTERESTING_MODEL_IDS = [
@@ -145,10 +131,14 @@ function buildHeaders(accessToken) {
 }
 
 /**
- * Get the projectId from loadCodeAssist, falling back to DEFAULT_PROJECT_ID.
+ * Get the caller's Google Cloud project id from loadCodeAssist.
+ * Returns null if the endpoint is unreachable or the response doesn't carry
+ * a project — callers should treat that as "quota unavailable" rather than
+ * substituting an arbitrary project id (which leaks identity).
+ *
  * @param {string} accessToken
  * @param {string} endpoint
- * @returns {Promise<string>}
+ * @returns {Promise<string|null>}
  */
 async function fetchProjectId(accessToken, endpoint) {
   try {
@@ -164,7 +154,7 @@ async function fetchProjectId(accessToken, endpoint) {
       if (proj && proj.id) return proj.id;
     }
   } catch { /* fallthrough */ }
-  return DEFAULT_PROJECT_ID;
+  return null;
 }
 
 /**
@@ -186,6 +176,7 @@ async function fetchQuotaFromCloud(accessToken) {
   for (const endpoint of ENDPOINTS) {
     try {
       const projectId = await fetchProjectId(accessToken, endpoint);
+      if (!projectId) continue;
       const r = await fetch(`${endpoint}/v1internal:fetchAvailableModels`, {
         method: 'POST',
         headers: buildHeaders(accessToken),

@@ -1,8 +1,13 @@
+'use strict';
+
+const { supportsUnicode } = require('./encoding.js');
+
 /**
  * Renders the HUD string for the status line using native ANSI escape codes.
- * Features Dual Progress Bars for Context and Quota with Nerd Font fallbacks.
- * 
- * @param {Object} state 
+ * Falls back to ASCII when the terminal can't render box-drawing / Nerd Font
+ * glyphs (detected via encoding.js, override via config.display.unicode).
+ *
+ * @param {Object} state
  * @param {Object} agyData
  * @param {Object} config
  * @param {Array}  quotaData  — from quota.js getQuota()
@@ -10,6 +15,9 @@
  */
 function renderHUD(state, agyData, config, quotaData) {
   const useNerd = config?.display?.useNerdFonts === true;
+  const unicode = typeof config?.display?.unicode === 'boolean'
+    ? config.display.unicode
+    : supportsUnicode();
 
   // ANSI escape sequences
   const reset = '\x1b[0m';
@@ -21,22 +29,43 @@ function renderHUD(state, agyData, config, quotaData) {
   const cyan = '\x1b[36m';
   const green = '\x1b[32m';
   const red = '\x1b[31m';
-  
-  const bgBlue = '\x1b[44m';
-  const fgWhite = '\x1b[37m';
 
-  // Fallbacks for Nerd Fonts
-  const branchIcon = useNerd ? ' ' : '⎇ ';
-  const planIcon = useNerd ? '󰌢 ' : '❖ ';
-  const stepIcon = useNerd ? ' ' : '⚡ ';
-  const taskIcon = useNerd ? ' ' : '✓ ';
-  const tokenIcon = useNerd ? '󰚩 ' : '⚿ ';
-  const ctxIcon = useNerd ? '󱔐 ' : '⛁ ';
-  const modelIcon = useNerd ? '󰚗 ' : '🤖 ';
+  // Box-drawing glyphs with ASCII fallback
+  const glyph = unicode
+    ? { bar: '█', empty: '░', vbar: '│', hbar: '─', ellipsis: '…' }
+    : { bar: '#', empty: '-', vbar: '|', hbar: '-', ellipsis: '...' };
+
+  // Icons: Nerd Font > emoji > plain ASCII
+  let branchIcon, planIcon, stepIcon, taskIcon, tokenIcon, ctxIcon, modelIcon;
+  if (useNerd) {
+    branchIcon = ' ';
+    planIcon = '󰌢 ';
+    stepIcon = ' ';
+    taskIcon = ' ';
+    tokenIcon = '󰚩 ';
+    ctxIcon = '󱔐 ';
+    modelIcon = '󰚗 ';
+  } else if (unicode) {
+    branchIcon = '⎇ ';
+    planIcon = '❖ ';
+    stepIcon = '⚡ ';
+    taskIcon = '✓ ';
+    tokenIcon = '⚿ ';
+    ctxIcon = '⛁ ';
+    modelIcon = '🤖 ';
+  } else {
+    branchIcon = '[B] ';
+    planIcon = '[P] ';
+    stepIcon = '[S] ';
+    taskIcon = '[T] ';
+    tokenIcon = '[Tk] ';
+    ctxIcon = '[C] ';
+    modelIcon = '[M] ';
+  }
 
   const brand = `${bold}${cyan}AGY-HUD${reset}`;
   const branchName = `${blue}${branchIcon}${state.branch || 'unknown'}${reset}`;
-  
+
   // Data extraction
   const usage = agyData?.context_window || {};
   const totalInput = usage.total_input_tokens || 0;
@@ -44,7 +73,7 @@ function renderHUD(state, agyData, config, quotaData) {
   const ctxPercent = usage.used_percentage || 0;
   const plan = agyData?.plan_tier || 'Free';
   const tasks = agyData?.task_count || 0;
-  
+
   // Model display name simplification helper
   const simplifyModelName = (name) => {
     if (!name) return '';
@@ -83,7 +112,7 @@ function renderHUD(state, agyData, config, quotaData) {
   const createProgressBar = (percent, color, width = 10, isUsage = true) => {
     const completed = Math.round((percent / 100) * width);
     const remaining = width - completed;
-    
+
     // Auto-color based on usage vs remaining
     let finalColor = color;
     if (isUsage) {
@@ -95,18 +124,17 @@ function renderHUD(state, agyData, config, quotaData) {
       else finalColor = green;
     }
 
-    // Use solid blocks for progress bar
-    return `${finalColor}[${'█'.repeat(completed)}${'░'.repeat(remaining)}]${reset}`;
+    return `${finalColor}[${glyph.bar.repeat(completed)}${glyph.empty.repeat(remaining)}]${reset}`;
   };
 
   const truncateAndPad = (str, width) => {
     if (str.length > width) {
-      return str.substring(0, width - 1) + '…';
+      return str.substring(0, width - 1) + glyph.ellipsis;
     }
     return str.padEnd(width, ' ');
   };
 
-  const divider = ` ${gray}│${reset} `;
+  const divider = ` ${gray}${glyph.vbar}${reset} `;
 
   const line1 = [
     brand,
@@ -130,20 +158,20 @@ function renderHUD(state, agyData, config, quotaData) {
   // Helper to render one quota item inside a column of exactly 37 visible chars
   const renderQuotaColumn = (q, now) => {
     const pct = Math.round(q.remainingFraction * 100);
-    
+
     // 1. Name (16 chars)
     const rawName = simplifyModelName(q.displayName || q.id);
     const namePart = truncateAndPad(rawName, 16);
     const coloredName = `${cyan}${namePart}${reset}`;
-    
+
     // 2. Bar (8 chars visible: [ + 6 bars + ])
     const barPart = createProgressBar(pct, green, 6, false);
-    
+
     // 3. Percent (4 chars)
     const pctStr = `${pct}%`.padStart(4, ' ');
     const pctColor = pct <= 10 ? red : pct <= 30 ? yellow : green;
     const coloredPct = `${pctColor}${pctStr}${reset}`;
-    
+
     // 4. Time (6 chars)
     let rawTime = '';
     if (q.resetTime) {
@@ -153,8 +181,7 @@ function renderHUD(state, agyData, config, quotaData) {
     }
     const timePart = rawTime.padEnd(6, ' ');
     const coloredTime = `${gray}${timePart}${reset}`;
-    
-    // Combined visually: 16 + 1 + 8 + 1 + 4 + 1 + 6 = 37 chars
+
     return `${coloredName} ${barPart} ${coloredPct} ${coloredTime}`;
   };
 
@@ -168,13 +195,13 @@ function renderHUD(state, agyData, config, quotaData) {
     for (let i = 0; i < cols.length; i += 2) {
       const col1 = cols[i];
       const col2 = cols[i + 1] || ' '.repeat(37);
-      rows.push(`  ${col1} ${gray}│${reset} ${col2}`);
+      rows.push(`  ${col1} ${gray}${glyph.vbar}${reset} ${col2}`);
     }
 
-    const dividerLine = `  ${gray}${'─'.repeat(75)}${reset}`;
+    const dividerLine = `  ${gray}${glyph.hbar.repeat(75)}${reset}`;
     quotaLines = `\n${dividerLine}\n` + rows.join('\n') + `\n${dividerLine}`;
   } else if (quotaData && quotaData.unavailableReason) {
-    const dividerLine = `  ${gray}${'─'.repeat(75)}${reset}`;
+    const dividerLine = `  ${gray}${glyph.hbar.repeat(75)}${reset}`;
     const reasonMessages = {
       not_logged_in: 'not logged into Antigravity',
       auth_failed: 'Antigravity auth failed',

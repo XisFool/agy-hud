@@ -4,9 +4,17 @@
 set -e
 
 VERSION=$(node -e "console.log(require('./package.json').version)")
+REPO_URL=$(node -e "
+  const r = require('./package.json').repository;
+  if (!r || !r.url) { console.error('package.json missing repository.url'); process.exit(1); }
+  console.log(r.url.replace(/^git\+/, '').replace(/\.git\$/, ''));
+")
 echo "📦 Preparing release v$VERSION..."
 
-# 1. Run tests first
+# 1. Rebuild the inline bootstrap hook so hooks.json mirrors inline-bootstrap.js
+node hooks/build-hook.js
+
+# 2. Run tests
 npm test
 
 # 2. Create standardized flattened .zip package
@@ -40,8 +48,6 @@ gh release create "v$VERSION" agy-hud.zip --title "Release v$VERSION" --notes "O
 
 echo "✅ Release v$VERSION is now live!"
 echo "🔗 Permanent 'Latest' Install URL:"
-echo "agy plugin install https://github.com/icebear0828/agy-hud/releases/latest/download/agy-hud.tgz"
-
-echo "✅ Release v$VERSION is now live!"
-echo "🔗 Install using:"
-echo "agy plugin install https://github.com/icebear0828/agy-hud/releases/download/v$VERSION/agy-hud.zip"
+echo "agy plugin install $REPO_URL/releases/latest/download/agy-hud.zip"
+echo "🔗 Versioned Install URL:"
+echo "agy plugin install $REPO_URL/releases/download/v$VERSION/agy-hud.zip"

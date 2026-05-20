@@ -2,28 +2,25 @@
 
 const fs = require('fs');
 const path = require('path');
-const os = require('os');
 const { getSessionState, parseAgyInput } = require('../parser.js');
 const { renderHUD } = require('../renderer.js');
 const { loadConfig } = require('../config.js');
 const { getQuota } = require('../quota.js');
+const { resolveAntigravityPath } = require('../paths.js');
 
 async function main() {
   const stdinData = [];
-  
-  // Set a timeout for stdin to avoid hanging if no data is piped
-  const timeout = setTimeout(() => {
-    process.exit(0);
-  }, 1000);
-
-  let dataTimeout = null;
   let hasHandled = false;
+
+  // Hard cap: if neither 'end' nor enough data arrives within 1.5s, give up.
+  // 1.5s tolerates slow Windows pipes that occasionally fail to emit 'end'
+  // while still keeping the statusLine snappy.
+  const timeout = setTimeout(() => handleInputAndRender(), 1500);
 
   async function handleInputAndRender() {
     if (hasHandled) return;
     hasHandled = true;
-    if (dataTimeout) clearTimeout(dataTimeout);
-    if (timeout) clearTimeout(timeout);
+    clearTimeout(timeout);
 
     const inputStr = Buffer.concat(stdinData).toString();
     if (!inputStr.trim()) {
@@ -31,11 +28,17 @@ async function main() {
     }
 
     const agyData = parseAgyInput(inputStr);
-    
-    // Fallback transcript path if not provided in stdin
-    const transcriptPath = agyData?.transcript_path || 
-      path.join(os.homedir(), '.gemini', 'antigravity-cli', 'brain',
-      agyData?.conversation_id || '', '.system_generated', 'logs', 'transcript.jsonl');
+
+    // Fallback transcript path if not provided in stdin — uses paths.js so we
+    // honour XDG_DATA_HOME / APPDATA / LOCALAPPDATA in addition to ~/.gemini.
+    const transcriptPath = agyData?.transcript_path ||
+      resolveAntigravityPath(path.join(
+        'brain',
+        agyData?.conversation_id || '',
+        '.system_generated',
+        'logs',
+        'transcript.jsonl'
+      ));
 
     try {
       const stats = fs.existsSync(transcriptPath) ? fs.statSync(transcriptPath) : { size: 0 };
@@ -44,7 +47,7 @@ async function main() {
         loadConfig(),
         getQuota().catch(() => []),
       ]);
-      
+
       const hudOutput = renderHUD(state, agyData, config, quotaData);
       process.stdout.write(hudOutput);
     } catch (err) {
@@ -53,21 +56,8 @@ async function main() {
     process.exit(0);
   }
 
-  process.stdin.on('data', chunk => {
-    stdinData.push(chunk);
-    clearTimeout(timeout);
-
-    // Debounce: if no new data for 30ms, assume transmission is complete.
-    // This handles Windows stdin pipe hanging issues where 'end' is not fired.
-    if (dataTimeout) clearTimeout(dataTimeout);
-    dataTimeout = setTimeout(() => {
-      handleInputAndRender();
-    }, 30);
-  });
-
-  process.stdin.on('end', () => {
-    handleInputAndRender();
-  });
+  process.stdin.on('data', chunk => stdinData.push(chunk));
+  process.stdin.on('end', handleInputAndRender);
 }
 
 main();

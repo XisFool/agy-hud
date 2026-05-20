@@ -96,6 +96,29 @@ test('renderHUD should explain quota fetch and auth failures', () => {
   );
 });
 
+test('renderHUD falls back to ASCII when config.display.unicode is false', () => {
+  const state = { steps: 1, branch: 'main' };
+  const agyData = {
+    context_window: { total_input_tokens: 1000, total_output_tokens: 200, used_percentage: 5, context_window_size: 1000000 },
+    plan_tier: 'Free',
+    task_count: 0,
+    model: { display_name: 'GPT-OSS 120B (Medium)' }
+  };
+
+  const output = renderHUD(state, agyData, { display: { useNerdFonts: false, unicode: false } });
+
+  // Box-drawing characters should NOT appear
+  assert.doesNotMatch(output, /│/);
+  assert.doesNotMatch(output, /█/);
+  assert.doesNotMatch(output, /░/);
+  // Ascii substitutes should appear
+  assert.match(output, /\|/);
+  assert.match(output, /#/);
+  // Plain-text icons replace emoji/glyphs
+  assert.match(output, /\[B\]/);
+  assert.match(output, /\[P\]/);
+});
+
 test('renderHUD should render Nerd Font icons when enabled', () => {
   const state = { steps: 0, branch: 'main' };
   const agyData = {
