@@ -9,7 +9,8 @@
     "showTokenBar": true,
     "showBreadcrumbs": true,
     "showGitBranch": true,
-    "breadcrumbCount": 3
+    "breadcrumbCount": 3,
+    "useNerdFonts": false
   },
   "thresholds": {
     "warning": 0.7,

@@ -1,12 +1,15 @@
 /**
  * Renders the HUD string for the status line using native ANSI escape codes.
- * Features Dual Progress Bars for Context and Quota.
+ * Features Dual Progress Bars for Context and Quota with Nerd Font fallbacks.
  * 
  * @param {Object} state 
  * @param {Object} agyData
+ * @param {Object} config
  * @returns {string}
  */
-function renderHUD(state, agyData) {
+function renderHUD(state, agyData, config) {
+  const useNerd = config?.display?.useNerdFonts === true;
+
   // ANSI escape sequences
   const reset = '\x1b[0m';
   const bold = '\x1b[1m';
@@ -21,8 +24,14 @@ function renderHUD(state, agyData) {
   const bgBlue = '\x1b[44m';
   const fgWhite = '\x1b[37m';
 
+  // Fallbacks for Nerd Fonts
+  const branchIcon = useNerd ? '' : '⎇';
+  const planIcon = useNerd ? '󰌢 ' : '';
+  const tokenIcon = useNerd ? '󰚩 ' : '';
+  const ctxIcon = useNerd ? '󱔐 ' : '';
+
   const brand = `${bgBlue}${fgWhite}${bold} AGY-HUD ${reset}`;
-  const branchName = `${blue}  ${state.branch} ${reset}`;
+  const branchName = `${blue} ${branchIcon} ${state.branch} ${reset}`;
   
   // Data extraction
   const usage = agyData?.context_window || {};
@@ -47,15 +56,14 @@ function renderHUD(state, agyData) {
     // Auto-color based on usage/remaining
     let finalColor = color;
     if (!isRemaining) {
-      // For usage: red if high
       if (percent > 80) finalColor = red;
       else if (percent > 50) finalColor = yellow;
     } else {
-      // For remaining: red if low
       if (percent < 20) finalColor = red;
       else if (percent < 50) finalColor = yellow;
     }
 
+    // Use solid blocks for progress bar
     return `${finalColor}[${'█'.repeat(completed)}${'░'.repeat(remaining)}]${reset}`;
   };
 
@@ -63,16 +71,16 @@ function renderHUD(state, agyData) {
     brand,
     branchName,
     `${gray}|${reset}`,
-    `${magenta} 󰌢 ${plan} ${reset}`,
+    `${magenta} ${planIcon}Plan: ${plan} ${reset}`,
     `${gray}|${reset}`,
     `${yellow} Steps: ${state.steps} ${reset}`,
     `${yellow} Tasks: ${tasks} ${reset}`
   ].join('');
 
   const line2 = [
-    `${cyan} 󰚩 Tokens: ${formatTokens(totalInput)}/${formatTokens(totalOutput)} ${reset}`,
+    `${cyan} ${tokenIcon}Tokens: ${formatTokens(totalInput)}/${formatTokens(totalOutput)} ${reset}`,
     `${gray}|${reset}`,
-    `${cyan} Ctx: ${ctxPercent.toFixed(1)}% ${reset}`,
+    `${cyan} ${ctxIcon}Ctx: ${ctxPercent.toFixed(1)}% ${reset}`,
     createProgressBar(ctxPercent, cyan),
     `${gray} | ${reset}`,
     `${green} Quota: ${quotaPercent.toFixed(1)}% ${reset}`,
