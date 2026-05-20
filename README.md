@@ -31,10 +31,11 @@ agy plugin import claude
 
 ## 🛠️ 插件结构说明
 
-本插件遵循 **pi-coding-agent** 官方协议开发：
-- `extensions/index.js`: CommonJS 格式的工厂函数入口。
+本插件遵循 **pi-coding-agent** 官方协议开发，包含以下核心文件：
+- `extensions/index.js`: CommonJS 格式的工厂函数入口，用于挂载 HUD。
 - `mcp_config.json`: 符合 Model Context Protocol 规范的服务器配置。
-- `skills/`: 自动加载的辅助技能说明。
+- `gemini-extension.json`: **核心补丁**，用于绕过 `agy` 远程下载时的安全校验 Bug，确保通过 Git URL 下载时能够正确识别并自动安装 Hook。
+- `hooks/`: 包含 `step_hooks.json`，在每个执行步骤完成后自动调用 HUD。
 
 ## 📄 开源协议
 MIT
