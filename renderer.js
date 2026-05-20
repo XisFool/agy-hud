@@ -5,9 +5,10 @@
  * @param {Object} state 
  * @param {Object} agyData
  * @param {Object} config
+ * @param {Array}  quotaData  — from quota.js getQuota()
  * @returns {string}
  */
-function renderHUD(state, agyData, config) {
+function renderHUD(state, agyData, config, quotaData) {
   const useNerd = config?.display?.useNerdFonts === true;
 
   // ANSI escape sequences
@@ -25,7 +26,7 @@ function renderHUD(state, agyData, config) {
   const fgWhite = '\x1b[37m';
 
   // Fallbacks for Nerd Fonts
-  const branchIcon = useNerd ? '' : '⎇';
+  const branchIcon = useNerd ? '' : '⎇';
   const planIcon = useNerd ? '󰌢 ' : '';
   const tokenIcon = useNerd ? '󰚩 ' : '';
   const ctxIcon = useNerd ? '󱔐 ' : '';
@@ -54,8 +55,19 @@ function renderHUD(state, agyData, config) {
     return n.toString();
   };
 
-  const createProgressBar = (percent, color) => {
-    const width = 10;
+  /**
+   * Format seconds into human-readable "Xh Ym" or "Ym" string.
+   * @param {number} secs
+   */
+  const formatDuration = (secs) => {
+    if (secs <= 0) return 'now';
+    const h = Math.floor(secs / 3600);
+    const m = Math.floor((secs % 3600) / 60);
+    if (h > 0) return `${h}h ${m}m`;
+    return `${m}m`;
+  };
+
+  const createProgressBar = (percent, color, width = 10) => {
     const completed = Math.round((percent / 100) * width);
     const remaining = width - completed;
     
@@ -87,7 +99,39 @@ function renderHUD(state, agyData, config) {
     `${green} Model: ${modelName} ${reset}`
   ].join('');
 
-  return `\n${line1}\n${line2}\n`;
+  // Build quota lines
+  let quotaLines = '';
+  if (quotaData && quotaData.length > 0) {
+    const now = Date.now();
+    const parts = quotaData.map(q => {
+      const pct = Math.round(q.remainingFraction * 100);
+      const bar = createProgressBar(pct, green, 8);
+      
+      // Calculate time until reset
+      let resetStr = '';
+      if (q.resetTime) {
+        const resetMs = new Date(q.resetTime).getTime();
+        const secsLeft = Math.max(0, Math.round((resetMs - now) / 1000));
+        resetStr = ` ${gray}~${formatDuration(secsLeft)}${reset}`;
+      }
+      
+      // Shorten display name to fit
+      let name = q.displayName || q.id;
+      if (name.length > 22) name = name.substring(0, 21) + '…';
+      
+      const pctColor = pct <= 10 ? red : pct <= 30 ? yellow : green;
+      return `${cyan}${name}${reset} ${bar} ${pctColor}${pct}%${reset}${resetStr}`;
+    });
+
+    // 2 per line
+    const rows = [];
+    for (let i = 0; i < parts.length; i += 2) {
+      rows.push('  ' + parts.slice(i, i + 2).join(`  ${gray}|${reset}  `));
+    }
+    quotaLines = '\n' + rows.join('\n');
+  }
+
+  return `\n${line1}\n${line2}${quotaLines}\n`;
 }
 
 module.exports = {

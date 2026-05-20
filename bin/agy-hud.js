@@ -5,6 +5,7 @@ const path = require('path');
 const { getSessionState, parseAgyInput } = require('../parser.js');
 const { renderHUD } = require('../renderer.js');
 const { loadConfig } = require('../config.js');
+const { getQuota } = require('../quota.js');
 
 async function main() {
   const stdinData = [];
@@ -34,10 +35,13 @@ async function main() {
 
     try {
       const stats = fs.existsSync(transcriptPath) ? fs.statSync(transcriptPath) : { size: 0 };
-      const state = await getSessionState(transcriptPath, stats.size);
-      const config = await loadConfig();
+      const [state, config, quotaData] = await Promise.all([
+        getSessionState(transcriptPath, stats.size),
+        loadConfig(),
+        getQuota().catch(() => []),
+      ]);
       
-      const hudOutput = renderHUD(state, agyData, config);
+      const hudOutput = renderHUD(state, agyData, config, quotaData);
       process.stdout.write(hudOutput);
     } catch (err) {
       // Quietly fail for HUD
