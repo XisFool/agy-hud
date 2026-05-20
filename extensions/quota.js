@@ -45,10 +45,10 @@ function getPlatformArch() {
   return `${plat}/${arch}`;
 }
 
-// The same endpoints agy uses (daily sandbox first, prod fallback)
+// The same endpoints agy uses (daily first — confirmed authoritative source, prod fallback)
 const ENDPOINTS = [
-  'https://cloudcode-pa.googleapis.com',
   'https://daily-cloudcode-pa.googleapis.com',
+  'https://cloudcode-pa.googleapis.com',
 ];
 
 // Models to show in the HUD — filtered from the full list, de-duped by quota bucket
