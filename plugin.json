@@ -1,10 +1,19 @@
 {
   "name": "agy-hud",
-  "version": "0.1.10",
+  "version": "0.1.11",
   "description": "Premium HUD for Antigravity CLI",
   "main": "extensions/index.js",
   "pi": {
-    "extensions": ["extensions/index.js"],
+    "extensions": [
+      "extensions/index.js",
+      "bin/agy-hud.js",
+      "parser.js",
+      "renderer.js",
+      "quota.js",
+      "config.js",
+      "git.js",
+      "agy-hud.config.json"
+    ],
     "skills": ["skills/*.md"]
   }
 }
