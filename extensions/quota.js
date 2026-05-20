@@ -13,6 +13,7 @@ const fs = require('fs');
 const path = require('path');
 const os = require('os');
 const crypto = require('crypto');
+const { spawn } = require('child_process');
 const { getAntigravityRoots } = require('./paths.js');
 
 // ─── Cross-platform token discovery ──────────────────────────────────────────
@@ -237,25 +238,91 @@ function writeCache(data, accessToken) {
   // If no resetTime found, cache for 5 minutes
   const expiresAt = isFinite(earliest) ? earliest : Date.now() + 5 * 60 * 1000;
   const tokenHash = crypto.createHash('sha256').update(accessToken).digest('hex');
+  const payload = {
+    version: CACHE_VERSION,
+    expiresAt,
+    lastRefreshed: Date.now(),
+    tokenHash,
+    data
+  };
   try {
-    fs.writeFileSync(CACHE_PATH, JSON.stringify({ version: CACHE_VERSION, expiresAt, tokenHash, data }));
+    fs.writeFileSync(CACHE_PATH, JSON.stringify(payload));
   } catch { /* ignore write errors */ }
 }
 
 /**
- * Get quota data (cached or fresh).
+ * Read the entire raw cache payload (even if expired).
+ * @param {string} accessToken
+ * @returns {Object | null}
+ */
+function readCachePayload(accessToken) {
+  try {
+    const raw = JSON.parse(fs.readFileSync(CACHE_PATH, 'utf8'));
+    const currentHash = crypto.createHash('sha256').update(accessToken).digest('hex');
+    if (raw.tokenHash !== currentHash) return null;
+    return raw;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Spawn a detached background process to refresh the quota cache.
+ */
+function triggerBackgroundRefresh() {
+  try {
+    const subprocess = spawn(process.execPath, [
+      path.join(__dirname, 'quota.js'),
+      '--refresh'
+    ], {
+      detached: true,
+      stdio: 'ignore'
+    });
+    subprocess.unref();
+  } catch { /* ignore spawning issues */ }
+}
+
+/**
+ * Get quota data using a non-blocking Stale-While-Revalidate pattern.
  * @returns {Promise<ModelQuota[]>}
  */
 async function getQuota() {
   const tok = readToken();
   if (!tok) return createUnavailableQuotaResult('not_logged_in');
 
-  const cached = readCache(tok.accessToken);
-  if (cached) return cached;
+  const payload = readCachePayload(tok.accessToken);
+  const isFresh = payload && isCachePayloadFresh(payload);
 
-  const fresh = await fetchQuotaFromCloud(tok.accessToken);
-  if (fresh.length > 0) writeCache(fresh, tok.accessToken);
-  return fresh;
+  if (!isFresh) {
+    const lastRefreshed = payload ? payload.lastRefreshed || 0 : 0;
+    // Debounce background refreshes — only spawn one if not refreshed in the last 30s
+    if (Date.now() - lastRefreshed > 30 * 1000) {
+      triggerBackgroundRefresh();
+    }
+  }
+
+  if (payload) {
+    return payload.data;
+  }
+
+  // If no cache exists at all, return empty but trigger background load
+  return [];
+}
+
+// ─── CLI Execution for background refreshes ──────────────────────────────────
+if (process.argv.includes('--refresh')) {
+  (async () => {
+    try {
+      const tok = readToken();
+      if (tok) {
+        const fresh = await fetchQuotaFromCloud(tok.accessToken);
+        if (fresh.length > 0) {
+          writeCache(fresh, tok.accessToken);
+        }
+      }
+    } catch {}
+    process.exit(0);
+  })();
 }
 
 module.exports = {

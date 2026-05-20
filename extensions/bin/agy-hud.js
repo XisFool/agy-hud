@@ -51,7 +51,11 @@ async function main() {
       const hudOutput = renderHUD(state, agyData, config, quotaData);
       process.stdout.write(hudOutput);
     } catch (err) {
-      // Quietly fail for HUD
+      // Write debug error to tmp directory
+      try {
+        const os = require('os');
+        fs.writeFileSync(path.join(os.tmpdir(), 'agy-hud-error.log'), err.stack || String(err));
+      } catch {}
     }
     process.exit(0);
   }
