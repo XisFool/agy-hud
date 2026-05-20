@@ -1,19 +1,15 @@
-const fs = require('fs');
-const path = require('path');
-const os = require('os');
-
 /**
- * @param {any} api 
+ * Antigravity HUD Extension
+ * This extension registers hooks to interact with the agy lifecycle.
+ * The main HUD display is handled via the statusLine command in settings.json.
  */
+
 module.exports = async (api) => {
-  // Extension entry point.
-  // HUD display is now handled via bin/agy-hud.js and the statusLine configuration in settings.json.
-  // This extension can be used for future interactive features or hooks.
-  
-  if (api && typeof api.registerHook === 'function') {
-    // Registering a dummy hook for now to ensure the extension is loaded
-    api.registerHook('on_session_start', async () => {
-      // Session started
+  if (api && api.registerHook) {
+    // We can use hooks here to trigger HUD refreshes if needed, 
+    // but agy calls the statusLine command automatically.
+    api.registerHook('on_step_complete', async (context) => {
+      // Step completed
     });
   }
 };

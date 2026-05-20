@@ -1,52 +1,46 @@
 #!/usr/bin/env node
+
 const fs = require('fs');
 const path = require('path');
-const os = require('os');
-const { getSessionState } = require('../parser.js');
+const { getSessionState, parseAgyInput } = require('../parser.js');
 const { renderHUD } = require('../renderer.js');
-const { loadConfig } = require('../config.js');
-const { getGitInfo } = require('../git.js');
 
-const BASE_DIR = path.join(os.homedir(), '.gemini', 'antigravity-cli');
-const BRAIN_DIR = path.join(BASE_DIR, 'brain');
+async function main() {
+  const stdinData = [];
+  
+  // Set a timeout for stdin to avoid hanging if no data is piped
+  const timeout = setTimeout(() => {
+    process.exit(0);
+  }, 1000);
 
-async function run() {
-  try {
-    const config = await loadConfig();
-    if (config.enabled === false) return;
+  process.stdin.on('data', chunk => {
+    stdinData.push(chunk);
+    clearTimeout(timeout);
+  });
 
-    let convId = process.env.ANTIGRAVITY_CONVERSATION_ID || path.basename(process.cwd());
-    let transcriptPath = path.join(BRAIN_DIR, convId, '.system_generated', 'logs', 'transcript.jsonl');
-
-    if (!fs.existsSync(transcriptPath)) {
-      // Fallback: try to find the most recently modified transcript in BRAIN_DIR
-      const sessions = fs.readdirSync(BRAIN_DIR);
-      let latestTime = 0;
-      let latestPath = null;
-      
-      for (const s of sessions) {
-        const p = path.join(BRAIN_DIR, s, '.system_generated', 'logs', 'transcript.jsonl');
-        if (fs.existsSync(p)) {
-          const mtime = fs.statSync(p).mtimeMs;
-          if (mtime > latestTime) {
-            latestTime = mtime;
-            latestPath = p;
-          }
-        }
-      }
-      if (latestPath) transcriptPath = latestPath;
-      else return;
+  process.stdin.on('end', async () => {
+    const inputStr = Buffer.concat(stdinData).toString();
+    if (!inputStr.trim()) {
+      process.exit(0);
     }
 
-    const stats = fs.statSync(transcriptPath);
-    const state = await getSessionState(transcriptPath, stats.size);
-    const gitInfo = await getGitInfo();
+    const agyData = parseAgyInput(inputStr);
+    
+    // Fallback transcript path if not provided in stdin
+    const transcriptPath = agyData?.transcript_path || 
+      path.join(process.env.HOME, '.gemini/antigravity-cli/brain', 
+      agyData?.conversation_id || '', '.system_generated/logs/transcript.jsonl');
 
-    const hud = renderHUD(state, config, gitInfo);
-    process.stdout.write(hud);
-  } catch (err) {
-    // Silent fail
-  }
+    try {
+      const stats = fs.existsSync(transcriptPath) ? fs.statSync(transcriptPath) : { size: 0 };
+      const state = await getSessionState(transcriptPath, stats.size);
+      
+      const hudOutput = renderHUD(state, agyData);
+      process.stdout.write(hudOutput);
+    } catch (err) {
+      // Quietly fail for HUD
+    }
+  });
 }
 
-run();
+main();

@@ -4,14 +4,22 @@ import { renderHUD } from '../../renderer.js';
 
 test('renderHUD should contain branch and steps', () => {
   const state = {
-    step_count: 42,
-    tokens: 15000,
+    steps: 42,
+    branch: 'main'
   };
-  const config = { enabled: true };
-  const gitInfo = { branch: 'main' };
+  const agyData = {
+    context_window: {
+      total_input_tokens: 15000,
+      total_output_tokens: 5000,
+      used_percentage: 12.5
+    },
+    plan_tier: 'Google AI Pro',
+    task_count: 3
+  };
 
-  const output = renderHUD(state, config, gitInfo);
+  const output = renderHUD(state, agyData);
   assert.match(output, /main/);
   assert.match(output, /42/);
-  assert.match(output, /15\.0k/);
+  assert.match(output, /15\.0k\(I\)/);
+  assert.match(output, /Google AI Pro/);
 });

@@ -1,26 +1,66 @@
 const fs = require('fs');
-const readline = require('readline');
+const { execSync } = require('child_process');
 
-async function getSessionState(logPath, fileSize) {
-  const stream = fs.createReadStream(logPath, { start: Math.max(0, fileSize - 50000) });
-  const rl = readline.createInterface({ input: stream, crlfDelay: Infinity });
+/**
+ * @typedef {Object} SessionState
+ * @property {number} steps
+ * @property {number} tokens
+ * @property {string} branch
+ * @property {Object} [usage]
+ */
 
-  let state = {
-    step_count: 0,
-    tokens: 0,
-    last_action: 'Idle',
-    current_task: 'N/A'
-  };
+/**
+ * Parses the transcript log to count steps and get branch info.
+ * @param {string} transcriptPath
+ * @param {number} fileSize
+ * @returns {Promise<SessionState>}
+ */
+async function getSessionState(transcriptPath, fileSize) {
+  let steps = 0;
+  let branch = 'main';
 
-  for await (const line of rl) {
-    try {
-      const entry = JSON.parse(line);
-      if (entry.type === 'PLANNER_RESPONSE') state.step_count++;
-      if (entry.tokens) state.tokens += entry.tokens;
-    } catch (e) {}
+  try {
+    const fileContent = fs.readFileSync(transcriptPath, 'utf8');
+    const lines = fileContent.split('\n').filter(l => l.trim());
+    
+    for (const line of lines) {
+      try {
+        const entry = JSON.parse(line);
+        if (entry.step_index > steps) {
+          steps = entry.step_index;
+        }
+      } catch (e) {
+        // Skip invalid JSON lines
+      }
+    }
+  } catch (error) {
+    // File might not exist yet
   }
 
-  return state;
+  try {
+    const gitBranch = execSync('git rev-parse --abbrev-ref HEAD', { encoding: 'utf8' }).trim();
+    branch = gitBranch;
+  } catch (e) {
+    // Not a git repo or git not found
+  }
+
+  return { steps, branch };
 }
 
-module.exports = { getSessionState };
+/**
+ * Parses the stdin JSON data provided by agy.
+ * @param {string} jsonStr
+ * @returns {Object|null}
+ */
+function parseAgyInput(jsonStr) {
+  try {
+    return JSON.parse(jsonStr);
+  } catch (e) {
+    return null;
+  }
+}
+
+module.exports = {
+  getSessionState,
+  parseAgyInput
+};
