@@ -4,9 +4,36 @@ import { execSync, spawn } from 'child_process';
 import fs from 'fs';
 import path from 'path';
 import http from 'http';
+import os from 'os';
+import { fileURLToPath } from 'url';
 
-const AGY_BIN = '/Users/c/.local/bin/agy';
-const PROJECT_ROOT = '/Users/c/agy-hud';
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+// Auto-discover agy binary: prefer $PATH lookup, then common install locations
+function findAgyBin() {
+  // 1. Try $PATH
+  try {
+    const cmd = process.platform === 'win32' ? 'where agy' : 'which agy';
+    return execSync(cmd, { stdio: ['ignore', 'pipe', 'ignore'] }).toString().trim().split('\n')[0];
+  } catch { /* not in PATH */ }
+  // 2. Common install locations
+  const candidates = [
+    path.join(os.homedir(), '.local', 'bin', 'agy'),
+    path.join(os.homedir(), '.local', 'bin', 'agy.exe'),
+    '/usr/local/bin/agy',
+    '/usr/bin/agy',
+    process.env.APPDATA ? path.join(process.env.APPDATA, 'antigravity', 'bin', 'agy.exe') : null,
+  ].filter(Boolean);
+  for (const c of candidates) {
+    if (fs.existsSync(c)) return c;
+  }
+  throw new Error('agy binary not found. Add it to $PATH or install to ~/.local/bin/agy');
+}
+
+const AGY_BIN = findAgyBin();
+// Project root is two levels up from tests/e2e/
+const PROJECT_ROOT = path.resolve(__dirname, '..', '..');
 
 test('E2E: Official agy plugin installation from remote URL', async (t) => {
   console.log('🏗️  Building release package...');

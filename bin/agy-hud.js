@@ -2,6 +2,7 @@
 
 const fs = require('fs');
 const path = require('path');
+const os = require('os');
 const { getSessionState, parseAgyInput } = require('../parser.js');
 const { renderHUD } = require('../renderer.js');
 const { loadConfig } = require('../config.js');
@@ -30,8 +31,8 @@ async function main() {
     
     // Fallback transcript path if not provided in stdin
     const transcriptPath = agyData?.transcript_path || 
-      path.join(process.env.HOME, '.gemini/antigravity-cli/brain', 
-      agyData?.conversation_id || '', '.system_generated/logs/transcript.jsonl');
+      path.join(os.homedir(), '.gemini', 'antigravity-cli', 'brain',
+      agyData?.conversation_id || '', '.system_generated', 'logs', 'transcript.jsonl');
 
     try {
       const stats = fs.existsSync(transcriptPath) ? fs.statSync(transcriptPath) : { size: 0 };

@@ -2,9 +2,9 @@
  * quota.js — Real account-level quota fetcher.
  *
  * Calls the same `fetchAvailableModels` endpoint that agy uses for /usage.
- * Token is read from ~/.gemini/antigravity-cli/antigravity-oauth-token.
- * Results are cached to /tmp/agy-hud-quota-cache.json keyed by the earliest
- * resetTime, so we never hit the network more than once per quota window.
+ * Token is auto-discovered from known agy app-data locations across platforms.
+ * Results are cached to os.tmpdir()/agy-hud-quota-cache.json keyed by the
+ * earliest resetTime, so we never hit the network more than once per window.
  */
 
 'use strict';
@@ -13,8 +13,46 @@ const fs = require('fs');
 const path = require('path');
 const os = require('os');
 
-const TOKEN_PATH = path.join(os.homedir(), '.gemini', 'antigravity-cli', 'antigravity-oauth-token');
+// ─── Cross-platform token discovery ──────────────────────────────────────────
+// agy stores its OAuth token in different locations depending on the environment.
+// We search in priority order; first readable file wins.
+const TOKEN_CANDIDATES = [
+  // Standard install (macOS / Linux via XDG override)
+  path.join(os.homedir(), '.gemini', 'antigravity-cli', 'antigravity-oauth-token'),
+  // XDG_DATA_HOME override (Linux)
+  process.env.XDG_DATA_HOME
+    ? path.join(process.env.XDG_DATA_HOME, 'antigravity-cli', 'antigravity-oauth-token')
+    : null,
+  // Windows: %APPDATA%\antigravity-cli\antigravity-oauth-token
+  process.env.APPDATA
+    ? path.join(process.env.APPDATA, 'antigravity-cli', 'antigravity-oauth-token')
+    : null,
+  // Windows: %LOCALAPPDATA%\antigravity-cli\antigravity-oauth-token
+  process.env.LOCALAPPDATA
+    ? path.join(process.env.LOCALAPPDATA, 'antigravity-cli', 'antigravity-oauth-token')
+    : null,
+].filter(Boolean);
+
 const CACHE_PATH = path.join(os.tmpdir(), 'agy-hud-quota-cache.json');
+
+// ─── Runtime User-Agent ───────────────────────────────────────────────────────
+// Read version from our own package.json and detect OS/arch at runtime.
+let _pkg = null;
+function getPackageVersion() {
+  if (_pkg) return _pkg;
+  try {
+    _pkg = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'package.json'), 'utf8')).version;
+  } catch {
+    _pkg = '0.0.0';
+  }
+  return _pkg;
+}
+
+function getPlatformArch() {
+  const plat = { darwin: 'darwin', linux: 'linux', win32: 'windows' }[process.platform] || process.platform;
+  const arch = { x64: 'amd64', arm64: 'arm64', ia32: '386' }[process.arch] || process.arch;
+  return `${plat}/${arch}`;
+}
 
 // The same endpoints agy uses (daily sandbox first, prod fallback)
 const ENDPOINTS = [
@@ -39,14 +77,14 @@ const INTERESTING_MODEL_IDS = [
  * @returns {{ accessToken: string } | null}
  */
 function readToken() {
-  try {
-    const raw = JSON.parse(fs.readFileSync(TOKEN_PATH, 'utf8'));
-    const token = raw.token;
-    if (!token || !token.access_token) return null;
-    return { accessToken: token.access_token };
-  } catch {
-    return null;
+  for (const candidate of TOKEN_CANDIDATES) {
+    try {
+      const raw = JSON.parse(fs.readFileSync(candidate, 'utf8'));
+      const token = raw.token;
+      if (token && token.access_token) return { accessToken: token.access_token };
+    } catch { /* try next */ }
   }
+  return null;
 }
 
 /**
@@ -57,8 +95,8 @@ function buildHeaders(accessToken) {
   return {
     'Authorization': `Bearer ${accessToken}`,
     'Content-Type': 'application/json',
-    'User-Agent': 'antigravity/1.15.8 darwin/arm64',
-    'X-Goog-Api-Client': 'gl-node/22.17.0',
+    'User-Agent': `antigravity/${getPackageVersion()} ${getPlatformArch()}`,
+    'X-Goog-Api-Client': `gl-node/${process.versions.node}`,
     'Client-Metadata': JSON.stringify({
       ideType: 'IDE_UNSPECIFIED',
       platform: 'PLATFORM_UNSPECIFIED',
