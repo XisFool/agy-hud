@@ -16,12 +16,15 @@ async function main() {
     process.exit(0);
   }, 1000);
 
-  process.stdin.on('data', chunk => {
-    stdinData.push(chunk);
-    clearTimeout(timeout);
-  });
+  let dataTimeout = null;
+  let hasHandled = false;
 
-  process.stdin.on('end', async () => {
+  async function handleInputAndRender() {
+    if (hasHandled) return;
+    hasHandled = true;
+    if (dataTimeout) clearTimeout(dataTimeout);
+    if (timeout) clearTimeout(timeout);
+
     const inputStr = Buffer.concat(stdinData).toString();
     if (!inputStr.trim()) {
       process.exit(0);
@@ -47,6 +50,23 @@ async function main() {
     } catch (err) {
       // Quietly fail for HUD
     }
+    process.exit(0);
+  }
+
+  process.stdin.on('data', chunk => {
+    stdinData.push(chunk);
+    clearTimeout(timeout);
+
+    // Debounce: if no new data for 30ms, assume transmission is complete.
+    // This handles Windows stdin pipe hanging issues where 'end' is not fired.
+    if (dataTimeout) clearTimeout(dataTimeout);
+    dataTimeout = setTimeout(() => {
+      handleInputAndRender();
+    }, 30);
+  });
+
+  process.stdin.on('end', () => {
+    handleInputAndRender();
   });
 }
 

@@ -26,13 +26,16 @@ function renderHUD(state, agyData, config, quotaData) {
   const fgWhite = '\x1b[37m';
 
   // Fallbacks for Nerd Fonts
-  const branchIcon = useNerd ? '' : '⎇';
-  const planIcon = useNerd ? '󰌢 ' : '';
-  const tokenIcon = useNerd ? '󰚩 ' : '';
-  const ctxIcon = useNerd ? '󱔐 ' : '';
+  const branchIcon = useNerd ? ' ' : '⎇ ';
+  const planIcon = useNerd ? '󰌢 ' : '❖ ';
+  const stepIcon = useNerd ? ' ' : '⚡ ';
+  const taskIcon = useNerd ? ' ' : '✓ ';
+  const tokenIcon = useNerd ? '󰚩 ' : '⚿ ';
+  const ctxIcon = useNerd ? '󱔐 ' : '⛁ ';
+  const modelIcon = useNerd ? '󰚗 ' : '🤖 ';
 
-  const brand = `${bgBlue}${fgWhite}${bold} AGY-HUD ${reset}`;
-  const branchName = `${blue} ${branchIcon} ${state.branch} ${reset}`;
+  const brand = `${bold}${cyan}AGY-HUD${reset}`;
+  const branchName = `${blue}${branchIcon}${state.branch || 'unknown'}${reset}`;
   
   // Data extraction
   const usage = agyData?.context_window || {};
@@ -42,12 +45,22 @@ function renderHUD(state, agyData, config, quotaData) {
   const plan = agyData?.plan_tier || 'Free';
   const tasks = agyData?.task_count || 0;
   
+  // Model display name simplification helper
+  const simplifyModelName = (name) => {
+    if (!name) return '';
+    return name
+      .replace('Gemini 3.5 Flash (High)', 'Gem 3.5 Flash(H)')
+      .replace('Gemini 3.5 Flash (Medium)', 'Gem 3.5 Flash(M)')
+      .replace('Gemini 3.1 Pro (High)', 'Gem 3.1 Pro(H)')
+      .replace('Gemini 3.1 Pro (Low)', 'Gem 3.1 Pro(L)')
+      .replace('Claude Sonnet 4.6 (Thinking)', 'Claude 4.6(Th)')
+      .replace('Claude Opus 4.6 (Thinking)', 'Claude Opus(Th)')
+      .replace('GPT-OSS 120B (Medium)', 'GPT-OSS 120B');
+  };
+
   // Extract model information
-  let modelName = agyData?.model?.display_name || agyData?.model?.id || 'Unknown Model';
-  // Simplify model name for the status bar if it's too long
-  if (modelName.length > 20) {
-    modelName = modelName.replace(' (High)', '').replace(' (Low)', '');
-  }
+  let rawModelName = agyData?.model?.display_name || agyData?.model?.id || 'Unknown Model';
+  const modelName = simplifyModelName(rawModelName);
 
   const formatTokens = (n) => {
     if (n >= 1000000) return (n / 1000000).toFixed(1) + 'M';
@@ -56,79 +69,110 @@ function renderHUD(state, agyData, config, quotaData) {
   };
 
   /**
-   * Format seconds into human-readable "Xh Ym" or "Ym" string.
+   * Format seconds into human-readable "XhYm" or "Ym" string (compact).
    * @param {number} secs
    */
   const formatDuration = (secs) => {
     if (secs <= 0) return 'now';
     const h = Math.floor(secs / 3600);
     const m = Math.floor((secs % 3600) / 60);
-    if (h > 0) return `${h}h ${m}m`;
+    if (h > 0) return `${h}h${m}m`;
     return `${m}m`;
   };
 
-  const createProgressBar = (percent, color, width = 10) => {
+  const createProgressBar = (percent, color, width = 10, isUsage = true) => {
     const completed = Math.round((percent / 100) * width);
     const remaining = width - completed;
     
-    // Auto-color based on usage
+    // Auto-color based on usage vs remaining
     let finalColor = color;
-    if (percent > 80) finalColor = red;
-    else if (percent > 50) finalColor = yellow;
+    if (isUsage) {
+      if (percent > 80) finalColor = red;
+      else if (percent > 50) finalColor = yellow;
+    } else {
+      if (percent <= 20) finalColor = red;
+      else if (percent <= 50) finalColor = yellow;
+      else finalColor = green;
+    }
 
     // Use solid blocks for progress bar
     return `${finalColor}[${'█'.repeat(completed)}${'░'.repeat(remaining)}]${reset}`;
   };
 
+  const truncateAndPad = (str, width) => {
+    if (str.length > width) {
+      return str.substring(0, width - 1) + '…';
+    }
+    return str.padEnd(width, ' ');
+  };
+
+  const divider = ` ${gray}│${reset} `;
+
   const line1 = [
     brand,
     branchName,
-    `${gray}|${reset}`,
-    `${magenta} ${planIcon}Plan: ${plan} ${reset}`,
-    `${gray}|${reset}`,
-    `${yellow} Steps: ${state.steps} ${reset}`,
-    `${yellow} Tasks: ${tasks} ${reset}`
-  ].join('');
+    `${magenta}${planIcon}Plan: ${plan}${reset}`,
+    `${yellow}${stepIcon}Steps: ${state.steps}${reset}`,
+    `${yellow}${taskIcon}Tasks: ${tasks}${reset}`
+  ].join(divider);
+
+  const tokensStr = `${cyan}${tokenIcon}Tokens: ${formatTokens(totalInput)}/${formatTokens(totalOutput)}${reset}`;
+  const ctxStr = `${cyan}${ctxIcon}Ctx: ${formatTokens(totalInput)}/${formatTokens(usage.context_window_size || 0)}${reset}`;
+  const ctxBar = createProgressBar(ctxPercent, cyan, 10, true);
+  const modelStr = `${green}${modelIcon}Model: ${modelName}${reset}`;
 
   const line2 = [
-    `${cyan} ${tokenIcon}Tokens: ${formatTokens(totalInput)}/${formatTokens(totalOutput)} ${reset}`,
-    `${gray}|${reset}`,
-    `${cyan} ${ctxIcon}Ctx: ${formatTokens(totalInput)}/${formatTokens(usage.context_window_size || 0)} ${reset}`,
-    createProgressBar(ctxPercent, cyan),
-    `${gray} | ${reset}`,
-    `${green} Model: ${modelName} ${reset}`
-  ].join('');
+    tokensStr,
+    `${ctxStr} ${ctxBar}`,
+    modelStr
+  ].join(divider);
+
+  // Helper to render one quota item inside a column of exactly 37 visible chars
+  const renderQuotaColumn = (q, now) => {
+    const pct = Math.round(q.remainingFraction * 100);
+    
+    // 1. Name (16 chars)
+    const rawName = simplifyModelName(q.displayName || q.id);
+    const namePart = truncateAndPad(rawName, 16);
+    const coloredName = `${cyan}${namePart}${reset}`;
+    
+    // 2. Bar (8 chars visible: [ + 6 bars + ])
+    const barPart = createProgressBar(pct, green, 6, false);
+    
+    // 3. Percent (4 chars)
+    const pctStr = `${pct}%`.padStart(4, ' ');
+    const pctColor = pct <= 10 ? red : pct <= 30 ? yellow : green;
+    const coloredPct = `${pctColor}${pctStr}${reset}`;
+    
+    // 4. Time (6 chars)
+    let rawTime = '';
+    if (q.resetTime) {
+      const resetMs = new Date(q.resetTime).getTime();
+      const secsLeft = Math.max(0, Math.round((resetMs - now) / 1000));
+      rawTime = `~${formatDuration(secsLeft)}`;
+    }
+    const timePart = rawTime.padEnd(6, ' ');
+    const coloredTime = `${gray}${timePart}${reset}`;
+    
+    // Combined visually: 16 + 1 + 8 + 1 + 4 + 1 + 6 = 37 chars
+    return `${coloredName} ${barPart} ${coloredPct} ${coloredTime}`;
+  };
 
   // Build quota lines
   let quotaLines = '';
   if (quotaData && quotaData.length > 0) {
     const now = Date.now();
-    const parts = quotaData.map(q => {
-      const pct = Math.round(q.remainingFraction * 100);
-      const bar = createProgressBar(pct, green, 8);
-      
-      // Calculate time until reset
-      let resetStr = '';
-      if (q.resetTime) {
-        const resetMs = new Date(q.resetTime).getTime();
-        const secsLeft = Math.max(0, Math.round((resetMs - now) / 1000));
-        resetStr = ` ${gray}~${formatDuration(secsLeft)}${reset}`;
-      }
-      
-      // Shorten display name to fit
-      let name = q.displayName || q.id;
-      if (name.length > 22) name = name.substring(0, 21) + '…';
-      
-      const pctColor = pct <= 10 ? red : pct <= 30 ? yellow : green;
-      return `${cyan}${name}${reset} ${bar} ${pctColor}${pct}%${reset}${resetStr}`;
-    });
+    const cols = quotaData.map(q => renderQuotaColumn(q, now));
 
-    // 2 per line
     const rows = [];
-    for (let i = 0; i < parts.length; i += 2) {
-      rows.push('  ' + parts.slice(i, i + 2).join(`  ${gray}|${reset}  `));
+    for (let i = 0; i < cols.length; i += 2) {
+      const col1 = cols[i];
+      const col2 = cols[i + 1] || ' '.repeat(37);
+      rows.push(`  ${col1} ${gray}│${reset} ${col2}`);
     }
-    quotaLines = '\n' + rows.join('\n');
+
+    const dividerLine = `  ${gray}${'─'.repeat(75)}${reset}`;
+    quotaLines = `\n${dividerLine}\n` + rows.join('\n') + `\n${dividerLine}`;
   }
 
   return `\n${line1}\n${line2}${quotaLines}\n`;

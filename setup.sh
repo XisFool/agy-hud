@@ -30,7 +30,7 @@ if [ -f "$SETTINGS_FILE" ]; then
     const settings = JSON.parse(fs.readFileSync('$SETTINGS_FILE', 'utf8'));
     settings.statusLine = {
       type: 'command',
-      command: '$NODE_PATH $PROJECT_DIR/bin/agy-hud.js'
+      command: '\"$NODE_PATH\" \"$PROJECT_DIR/bin/agy-hud.js\"'
     };
     fs.writeFileSync('$SETTINGS_FILE', JSON.stringify(settings, null, 2));
   "

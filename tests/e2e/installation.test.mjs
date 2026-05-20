@@ -37,7 +37,7 @@ const PROJECT_ROOT = path.resolve(__dirname, '..', '..');
 
 test('E2E: Official agy plugin installation from remote URL', async (t) => {
   console.log('🏗️  Building release package...');
-  execSync(`${PROJECT_ROOT}/release.sh`, { cwd: PROJECT_ROOT });
+  execSync(`SKIP_GH_RELEASE=true ${PROJECT_ROOT}/release.sh`, { cwd: PROJECT_ROOT });
   const zipPath = path.join(PROJECT_ROOT, 'agy-hud.zip');
 
   // New Debug: Validate the source before packing

@@ -28,7 +28,7 @@ if (Test-Path $SettingsFile) {
     
     $Settings.statusLine = @{
         type = "command"
-        command = "$EscapedNodePath $EscapedProjectDir\bin\agy-hud.js"
+        command = "`"$EscapedNodePath`" `"$EscapedProjectDir\bin\agy-hud.js`""
     }
 
     $Settings | ConvertTo-Json -Depth 10 | Set-Content $SettingsFile
