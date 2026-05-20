@@ -12,6 +12,7 @@
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
+const crypto = require('crypto');
 const { getAntigravityRoots } = require('./paths.js');
 
 // ─── Cross-platform token discovery ──────────────────────────────────────────
@@ -204,12 +205,15 @@ function isCachePayloadFresh(raw) {
 
 /**
  * Read cached quota if still valid.
+ * @param {string} accessToken
  * @returns {ModelQuota[] | null}
  */
-function readCache() {
+function readCache(accessToken) {
   try {
     const raw = JSON.parse(fs.readFileSync(CACHE_PATH, 'utf8'));
     if (!isCachePayloadFresh(raw)) return null;
+    const currentHash = crypto.createHash('sha256').update(accessToken).digest('hex');
+    if (raw.tokenHash !== currentHash) return null;
     return raw.data;
   } catch {
     return null;
@@ -219,8 +223,9 @@ function readCache() {
 /**
  * Write quota cache. Expires at the earliest resetTime among all buckets.
  * @param {ModelQuota[]} data
+ * @param {string} accessToken
  */
-function writeCache(data) {
+function writeCache(data, accessToken) {
   // Find earliest resetTime
   let earliest = Infinity;
   for (const m of data) {
@@ -231,8 +236,9 @@ function writeCache(data) {
   }
   // If no resetTime found, cache for 5 minutes
   const expiresAt = isFinite(earliest) ? earliest : Date.now() + 5 * 60 * 1000;
+  const tokenHash = crypto.createHash('sha256').update(accessToken).digest('hex');
   try {
-    fs.writeFileSync(CACHE_PATH, JSON.stringify({ version: CACHE_VERSION, expiresAt, data }));
+    fs.writeFileSync(CACHE_PATH, JSON.stringify({ version: CACHE_VERSION, expiresAt, tokenHash, data }));
   } catch { /* ignore write errors */ }
 }
 
@@ -241,14 +247,14 @@ function writeCache(data) {
  * @returns {Promise<ModelQuota[]>}
  */
 async function getQuota() {
-  const cached = readCache();
-  if (cached) return cached;
-
   const tok = readToken();
   if (!tok) return createUnavailableQuotaResult('not_logged_in');
 
+  const cached = readCache(tok.accessToken);
+  if (cached) return cached;
+
   const fresh = await fetchQuotaFromCloud(tok.accessToken);
-  if (fresh.length > 0) writeCache(fresh);
+  if (fresh.length > 0) writeCache(fresh, tok.accessToken);
   return fresh;
 }
 
@@ -258,4 +264,6 @@ module.exports = {
   normalizeQuotaModels,
   isCachePayloadFresh,
   createUnavailableQuotaResult,
+  readCache,
+  writeCache,
 };

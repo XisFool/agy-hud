@@ -1,5 +1,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import path from 'node:path';
+import os from 'node:os';
 import quotaModule from '../../extensions/quota.js';
 
 const {
@@ -105,3 +108,27 @@ test('fetchQuotaFromCloud returns a fetch diagnostic for transport failures', as
     globalThis.fetch = originalFetch;
   }
 });
+
+test('readCache / writeCache respects token changes', () => {
+  const { readCache, writeCache } = quotaModule;
+  const mockData = [{ id: 'gemini-3.5-flash-low', displayName: 'Gemini 3.5 Flash (Medium)', remainingFraction: 0.5, resetTime: null }];
+  
+  // Write cache with token A
+  writeCache(mockData, 'token-A');
+  
+  // Reading with token A should succeed
+  const cachedA = readCache('token-A');
+  assert.deepEqual(cachedA, mockData);
+  
+  // Reading with token B should return null (token change detected)
+  const cachedB = readCache('token-B');
+  assert.equal(cachedB, null);
+  
+  // Clean up
+  const cachePath = path.join(os.tmpdir(), 'agy-hud-quota-cache.json');
+  try {
+    fs.unlinkSync(cachePath);
+  } catch {}
+});
+
+
