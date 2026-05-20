@@ -2,40 +2,61 @@
 
 Premium 风格的状态栏 HUD 插件，专为 **Antigravity CLI (agy)** 设计。
 
-![HUD Preview](https://github.com/icebear0828/agy-hud/raw/main/preview.png)
+## 📦 安装
 
-## 📦 安装指南
-
-由于 Antigravity CLI 对插件格式有严格要求，请选择以下官方支持的安装方式：
-
-### 1. 推荐：通过 Git 直接安装 (最稳健)
 ```bash
 agy plugin install https://github.com/icebear0828/agy-hud.git
 ```
 
-### 2. 开发者安装 (本地源码)
-1. 克隆仓库：`git clone https://github.com/icebear0828/agy-hud.git`
-2. 进入目录并安装：`agy plugin install .`
-
-### 3. 从 Claude Code 迁移
-如果你已在 Claude 环境安装过，可直接导入：
+本地开发：
 ```bash
-agy plugin import claude
+git clone https://github.com/icebear0828/agy-hud.git
+agy plugin install .
 ```
 
-## ✨ 核心功能
+## ✨ 功能
 
-- **实时状态追踪**：同步显示当前会话的 Steps、Tokens 和 Git 分支。
-- **Premium 设计**：采用 256 色终端渲染，支持 Powerline 风格符号。
-- **自动挂载**：安装后自动注册到 `on_step_complete` 钩子，无感运行。
+### 状态行（每个步骤完成后自动刷新）
 
-## 🛠️ 插件结构说明
+```
+ AGY-HUD  ⎇ main | Plan: Pro | Steps: 12  Tasks: 3
+ Tokens: 50.0k/5.0k | Ctx: 50.0k/200.0k [██░░░░░░░░] | Model: Claude Sonnet 4.6
+```
 
-本插件遵循 **pi-coding-agent** 官方协议开发，包含以下核心文件：
-- `extensions/index.js`: CommonJS 格式的工厂函数入口，用于挂载 HUD。
-- `mcp_config.json`: 符合 Model Context Protocol 规范的服务器配置。
-- `gemini-extension.json`: **核心补丁**，用于绕过 `agy` 远程下载时的安全校验 Bug，确保通过 Git URL 下载时能够正确识别并自动安装 Hook。
-- `hooks/`: 包含 `step_hooks.json`，在每个执行步骤完成后自动调用 HUD。
+### 实时账号 Quota（真实剩余额度 + 重置倒计时）
 
-## 📄 开源协议
+```
+Gemini 3.5 Flash (Hig… [█████░░░] 60% ~30m  |  Gemini 3.5 Flash (Med… [█████░░░] 60% ~30m
+Claude Sonnet 4.6 (Th… [███░░░░░] 40% ~4h 2m  |  Claude Opus 4.6 (Thin… [███░░░░░] 40% ~4h 2m
+GPT-OSS 120B (Medium) [███░░░░░] 40% ~4h 2m
+```
+
+Quota 数据来源与 `/usage` 命令完全一致（`fetchAvailableModels` API），本地缓存到重置时间，**无后台轮询**。
+
+## 🛠️ 核心文件
+
+| 文件 | 说明 |
+|---|---|
+| `extensions/index.js` | 插件入口，注册 `on_step_complete` 钩子 |
+| `bin/agy-hud.js` | 主渲染逻辑，读 stdin JSON → 输出 ANSI HUD |
+| `quota.js` | 从 cloudcode-pa API 获取真实 quota，带本地缓存 |
+| `renderer.js` | ANSI 渲染器，含进度条 / 倒计时 |
+| `parser.js` | 解析 agy stdin JSON payload |
+| `config.js` | 读取 `agy-hud.config.json` 用户配置 |
+
+## ⚙️ 配置
+
+在项目根目录创建 `agy-hud.config.json`：
+
+```json
+{
+  "display": {
+    "useNerdFonts": true
+  }
+}
+```
+
+`useNerdFonts: true` 启用 Powerline / Nerd Font 图标（默认 `false`，使用 ASCII fallback）。
+
+## 📄 License
 MIT
