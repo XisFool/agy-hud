@@ -46,8 +46,8 @@ function getPlatformArch() {
 
 // The same endpoints agy uses (daily sandbox first, prod fallback)
 const ENDPOINTS = [
-  'https://daily-cloudcode-pa.googleapis.com',
   'https://cloudcode-pa.googleapis.com',
+  'https://daily-cloudcode-pa.googleapis.com',
 ];
 
 // Models to show in the HUD — filtered from the full list, de-duped by quota bucket
@@ -62,6 +62,7 @@ const INTERESTING_MODEL_IDS = [
 ];
 
 function normalizeRemainingFraction(value) {
+  if (value === undefined || value === null) return 1;
   if (typeof value !== 'number' || !Number.isFinite(value)) return 0;
   if (value < 0) return 0;
   if (value > 1) return 1;
@@ -70,7 +71,6 @@ function normalizeRemainingFraction(value) {
 
 /**
  * Normalize the fetchAvailableModels response to the HUD quota shape.
- * agy usage treats quotaInfo objects without remainingFraction as exhausted.
  * @param {Object<string, Object>} models
  * @returns {ModelQuota[]}
  */
