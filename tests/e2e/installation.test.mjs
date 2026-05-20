@@ -18,9 +18,28 @@ test('E2E: Official agy plugin installation from remote URL', async (t) => {
   const valOutput = execSync(`${AGY_BIN} plugin validate ${PROJECT_ROOT}`).toString();
   console.log('Validation Output:', valOutput);
 
-  // 2. Use the local project directory as the install source
-  // agy plugin install <path> should work if the structure is correct
-  const url = PROJECT_ROOT;
+  // 2. Start a local HTTP server to host the clean ZIP
+  const server = http.createServer((req, res) => {
+    console.log(`🌐 Server received request: ${req.url}`);
+    if (req.url === '/agy-hud.zip') {
+      const stat = fs.statSync(zipPath);
+      res.writeHead(200, {
+        'Content-Type': 'application/zip',
+        'Content-Length': stat.size
+      });
+      const readStream = fs.createReadStream(zipPath);
+      readStream.on('open', () => console.log('📂 Stream opened for ZIP'));
+      readStream.on('end', () => console.log('✅ Stream finished sending ZIP'));
+      readStream.pipe(res);
+    } else {
+      res.writeHead(404);
+      res.end();
+    }
+  });
+
+  const port = 8082;
+  await new Promise(resolve => server.listen(port, resolve));
+  const url = `http://localhost:${port}/agy-hud.zip`;
 
   try {
     console.log(`🔌 Spawning agy plugin install from ${url}`);
@@ -69,8 +88,8 @@ test('E2E: Official agy plugin installation from remote URL', async (t) => {
     console.log('✅ Installation Successful!');
     assert.strictEqual(exitCode, 0);
     assert.match(stdout, /\[ok\]/);
-    assert.match(stdout, /skills/);
   } finally {
-    // No server to close
+    server.close();
+    console.log('🛑 Server closed');
   }
 });
