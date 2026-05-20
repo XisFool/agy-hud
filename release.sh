@@ -16,7 +16,6 @@ mkdir -p release_tmp
 # Copy only whitelisted files (now from root and extensions)
 cp parser.js renderer.js config.js git.js plugin.json mcp_config.json agy-hud.config.json package.json README.md gemini-extension.json release_tmp/
 cp -r extensions release_tmp/
-cp -r hooks release_tmp/
 cp -r skills release_tmp/
 
 cd release_tmp

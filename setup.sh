@@ -7,7 +7,7 @@ set -e
 
 echo "🚀 Starting agy-hud installation..."
 
-# 1. Path detection
+# 1. Detect paths
 NODE_PATH=$(which node)
 PROJECT_DIR=$(pwd)
 SETTINGS_FILE="$HOME/.gemini/antigravity-cli/settings.json"
@@ -19,21 +19,18 @@ fi
 
 # 2. Official Plugin Installation
 echo "🔌 Installing as an official agy plugin..."
+agy plugin uninstall agy-hud >/dev/null 2>&1 || true
 agy plugin install .
 
-# 3. Backup and update settings.json (for statusLine specific rendering)
+# 3. Update settings.json for statusLine
 if [ -f "$SETTINGS_FILE" ]; then
-  echo "💾 Backing up settings.json to settings.json.bak..."
-  cp "$SETTINGS_FILE" "$SETTINGS_FILE.bak"
-  
-  echo "🔧 Updating statusLine command in settings.json..."
-  # Use node to safely update JSON
+  echo "🔧 Updating statusLine configuration in settings.json..."
   $NODE_PATH -e "
     const fs = require('fs');
     const settings = JSON.parse(fs.readFileSync('$SETTINGS_FILE', 'utf8'));
     settings.statusLine = {
       type: 'command',
-      command: '$NODE_PATH $PROJECT_DIR/src/index.mjs'
+      command: '$NODE_PATH $PROJECT_DIR/bin/agy-hud.js'
     };
     fs.writeFileSync('$SETTINGS_FILE', JSON.stringify(settings, null, 2));
   "

@@ -14,13 +14,11 @@ if (-not $NodePath) {
 
 # 2. Official Plugin Installation
 Write-Host "🔌 Installing as an official agy plugin..." -ForegroundColor Yellow
+agy plugin uninstall agy-hud | Out-Null
 agy plugin install .
 
 # 3. Update settings.json
 if (Test-Path $SettingsFile) {
-    Write-Host "💾 Backing up settings.json..."
-    Copy-Item $SettingsFile "$SettingsFile.bak"
-
     Write-Host "🔧 Updating statusLine configuration..."
     $Settings = Get-Content $SettingsFile | ConvertFrom-Json
     
@@ -30,7 +28,7 @@ if (Test-Path $SettingsFile) {
     
     $Settings.statusLine = @{
         type = "command"
-        command = "$EscapedNodePath $EscapedProjectDir\src\index.mjs"
+        command = "$EscapedNodePath $EscapedProjectDir\bin\agy-hud.js"
     }
 
     $Settings | ConvertTo-Json -Depth 10 | Set-Content $SettingsFile
