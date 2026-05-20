@@ -20,6 +20,6 @@ test('renderHUD should contain branch and steps', () => {
   const output = renderHUD(state, agyData);
   assert.match(output, /main/);
   assert.match(output, /42/);
-  assert.match(output, /15\.0k\(I\)/);
+  assert.match(output, /15\.0k\/5\.0k/);
   assert.match(output, /Google AI Pro/);
 });

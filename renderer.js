@@ -1,6 +1,6 @@
 /**
  * Renders the HUD string for the status line using native ANSI escape codes.
- * This avoids dependency issues with ESM-only chalk in CommonJS.
+ * Features Dual Progress Bars for Context and Quota.
  * 
  * @param {Object} state 
  * @param {Object} agyData
@@ -16,6 +16,7 @@ function renderHUD(state, agyData) {
   const yellow = '\x1b[33m';
   const cyan = '\x1b[36m';
   const green = '\x1b[32m';
+  const red = '\x1b[31m';
   
   const bgBlue = '\x1b[44m';
   const fgWhite = '\x1b[37m';
@@ -23,11 +24,12 @@ function renderHUD(state, agyData) {
   const brand = `${bgBlue}${fgWhite}${bold} AGY-HUD ${reset}`;
   const branchName = `${blue}  ${state.branch} ${reset}`;
   
-  // Real-time data from agy
+  // Data extraction
   const usage = agyData?.context_window || {};
   const totalInput = usage.total_input_tokens || 0;
   const totalOutput = usage.total_output_tokens || 0;
-  const usedPercent = usage.used_percentage || 0;
+  const ctxPercent = usage.used_percentage || 0;
+  const quotaPercent = usage.remaining_percentage || 0;
   const plan = agyData?.plan_tier || 'Free';
   const tasks = agyData?.task_count || 0;
 
@@ -37,11 +39,24 @@ function renderHUD(state, agyData) {
     return n.toString();
   };
 
-  const progressBar = (percent) => {
+  const createProgressBar = (percent, color, isRemaining = false) => {
     const width = 10;
     const completed = Math.round((percent / 100) * width);
     const remaining = width - completed;
-    return `${cyan}[${'█'.repeat(completed)}${'░'.repeat(remaining)}]${reset}`;
+    
+    // Auto-color based on usage/remaining
+    let finalColor = color;
+    if (!isRemaining) {
+      // For usage: red if high
+      if (percent > 80) finalColor = red;
+      else if (percent > 50) finalColor = yellow;
+    } else {
+      // For remaining: red if low
+      if (percent < 20) finalColor = red;
+      else if (percent < 50) finalColor = yellow;
+    }
+
+    return `${finalColor}[${'█'.repeat(completed)}${'░'.repeat(remaining)}]${reset}`;
   };
 
   const line1 = [
@@ -55,10 +70,13 @@ function renderHUD(state, agyData) {
   ].join('');
 
   const line2 = [
-    `${cyan} 󰚩 Tokens: ${formatTokens(totalInput)}(I) / ${formatTokens(totalOutput)}(O) ${reset}`,
+    `${cyan} 󰚩 Tokens: ${formatTokens(totalInput)}/${formatTokens(totalOutput)} ${reset}`,
     `${gray}|${reset}`,
-    `${green} 󱔐 Context: ${usedPercent.toFixed(1)}% ${reset}`,
-    progressBar(usedPercent)
+    `${cyan} Ctx: ${ctxPercent.toFixed(1)}% ${reset}`,
+    createProgressBar(ctxPercent, cyan),
+    `${gray} | ${reset}`,
+    `${green} Quota: ${quotaPercent.toFixed(1)}% ${reset}`,
+    createProgressBar(quotaPercent, green, true)
   ].join('');
 
   return `\n${line1}\n${line2}\n`;
