@@ -142,23 +142,6 @@ function buildHeaders(accessToken) {
  * @param {string} endpoint
  * @returns {Promise<string|null>}
  */
-async function fetchProjectId(accessToken, endpoint) {
-  try {
-    const r = await fetch(`${endpoint}/v1internal:loadCodeAssist`, {
-      method: 'POST',
-      headers: buildHeaders(accessToken),
-      body: JSON.stringify({ metadata: { ideType: 'IDE_UNSPECIFIED', platform: 'PLATFORM_UNSPECIFIED', pluginType: 'GEMINI' } }),
-    });
-    if (r.ok) {
-      const data = await r.json();
-      const proj = data.cloudaicompanionProject;
-      if (typeof proj === 'string' && proj) return proj;
-      if (proj && proj.id) return proj.id;
-    }
-  } catch { /* fallthrough */ }
-  return null;
-}
-
 /**
  * @typedef {Object} ModelQuota
  * @property {string} id
@@ -169,6 +152,8 @@ async function fetchProjectId(accessToken, endpoint) {
 
 /**
  * Fetch quota data from the cloud API.
+ * loadCodeAssist no longer returns cloudaicompanionProject; fetchAvailableModels
+ * accepts an empty body and returns quota directly.
  * @param {string} accessToken
  * @returns {Promise<ModelQuota[]>}
  */
@@ -177,12 +162,10 @@ async function fetchQuotaFromCloud(accessToken) {
 
   for (const endpoint of ENDPOINTS) {
     try {
-      const projectId = await fetchProjectId(accessToken, endpoint);
-      if (!projectId) continue;
       const r = await fetch(`${endpoint}/v1internal:fetchAvailableModels`, {
         method: 'POST',
         headers: buildHeaders(accessToken),
-        body: JSON.stringify({ project: projectId }),
+        body: JSON.stringify({}),
       });
       if (!r.ok) {
         if (r.status === 401 || r.status === 403) sawAuthFailure = true;
