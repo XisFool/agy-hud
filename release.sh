@@ -14,12 +14,13 @@ echo "🗜️  Creating flattened .zip package..."
 rm -rf release_tmp
 mkdir -p release_tmp
 # Copy only whitelisted files (now from root and extensions)
-cp parser.js renderer.js config.js git.js plugin.json import_manifest.json mcp_config.json agy-hud.config.json package.json README.md release_tmp/
+cp parser.js renderer.js config.js git.js plugin.json mcp_config.json agy-hud.config.json package.json README.md gemini-extension.json release_tmp/
 cp -r extensions release_tmp/
 cp -r hooks release_tmp/
 cp -r skills release_tmp/
 
 cd release_tmp
+rm -f ../agy-hud.zip
 zip -r ../agy-hud.zip .
 cd ..
 rm -rf release_tmp

@@ -1,0 +1,7 @@
+{
+  "name": "agy-hud",
+  "version": "0.1.10",
+  "description": "Premium HUD for agy",
+  "main": "extensions/index.js",
+  "pi": "extensions/index.js"
+}
