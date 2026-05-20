@@ -38,9 +38,15 @@ function renderHUD(state, agyData, config) {
   const totalInput = usage.total_input_tokens || 0;
   const totalOutput = usage.total_output_tokens || 0;
   const ctxPercent = usage.used_percentage || 0;
-  const quotaPercent = usage.remaining_percentage || 0;
   const plan = agyData?.plan_tier || 'Free';
   const tasks = agyData?.task_count || 0;
+  
+  // Extract model information
+  let modelName = agyData?.model?.display_name || agyData?.model?.id || 'Unknown Model';
+  // Simplify model name for the status bar if it's too long
+  if (modelName.length > 20) {
+    modelName = modelName.replace(' (High)', '').replace(' (Low)', '');
+  }
 
   const formatTokens = (n) => {
     if (n >= 1000000) return (n / 1000000).toFixed(1) + 'M';
@@ -48,20 +54,15 @@ function renderHUD(state, agyData, config) {
     return n.toString();
   };
 
-  const createProgressBar = (percent, color, isRemaining = false) => {
+  const createProgressBar = (percent, color) => {
     const width = 10;
     const completed = Math.round((percent / 100) * width);
     const remaining = width - completed;
     
-    // Auto-color based on usage/remaining
+    // Auto-color based on usage
     let finalColor = color;
-    if (!isRemaining) {
-      if (percent > 80) finalColor = red;
-      else if (percent > 50) finalColor = yellow;
-    } else {
-      if (percent < 20) finalColor = red;
-      else if (percent < 50) finalColor = yellow;
-    }
+    if (percent > 80) finalColor = red;
+    else if (percent > 50) finalColor = yellow;
 
     // Use solid blocks for progress bar
     return `${finalColor}[${'█'.repeat(completed)}${'░'.repeat(remaining)}]${reset}`;
@@ -83,8 +84,7 @@ function renderHUD(state, agyData, config) {
     `${cyan} ${ctxIcon}Ctx: ${ctxPercent.toFixed(1)}% ${reset}`,
     createProgressBar(ctxPercent, cyan),
     `${gray} | ${reset}`,
-    `${green} Quota: ${quotaPercent.toFixed(1)}% ${reset}`,
-    createProgressBar(quotaPercent, green, true)
+    `${green} Model: ${modelName} ${reset}`
   ].join('');
 
   return `\n${line1}\n${line2}\n`;
