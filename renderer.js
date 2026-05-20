@@ -81,7 +81,7 @@ function renderHUD(state, agyData, config) {
   const line2 = [
     `${cyan} ${tokenIcon}Tokens: ${formatTokens(totalInput)}/${formatTokens(totalOutput)} ${reset}`,
     `${gray}|${reset}`,
-    `${cyan} ${ctxIcon}Ctx: ${ctxPercent.toFixed(1)}% ${reset}`,
+    `${cyan} ${ctxIcon}Ctx: ${formatTokens(totalInput)}/${formatTokens(usage.context_window_size || 0)} ${reset}`,
     createProgressBar(ctxPercent, cyan),
     `${gray} | ${reset}`,
     `${green} Model: ${modelName} ${reset}`
