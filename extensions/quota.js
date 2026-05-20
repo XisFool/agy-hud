@@ -14,14 +14,17 @@ const path = require('path');
 const os = require('os');
 const crypto = require('crypto');
 const { spawn } = require('child_process');
-const { getAntigravityRoots } = require('./paths.js');
+const { getAntigravityRoots, resolveAntigravityPath } = require('./paths.js');
 
 // ─── Cross-platform token discovery ──────────────────────────────────────────
 // agy stores its OAuth token in different locations depending on the environment.
 // We search in priority order; first readable file wins.
-const TOKEN_CANDIDATES = getAntigravityRoots().map(root =>
-  path.join(root, 'antigravity-oauth-token')
-);
+// Includes both antigravity-cli (standard) and jetski-standalone (older installs)
+// token filenames, each under all known app-data roots.
+const TOKEN_CANDIDATES = [
+  ...getAntigravityRoots().map(root => path.join(root, 'antigravity-oauth-token')),
+  path.join(os.homedir(), '.gemini', 'jetski-standalone-oauth-token'),
+];
 
 const CACHE_PATH = path.join(os.tmpdir(), 'agy-hud-quota-cache.json');
 const CACHE_VERSION = 2;
@@ -46,13 +49,13 @@ function getPlatformArch() {
 }
 
 // The same endpoints agy uses (daily first — confirmed authoritative source, prod fallback)
-const ENDPOINTS = [
+const DEFAULT_ENDPOINTS = [
   'https://daily-cloudcode-pa.googleapis.com',
   'https://cloudcode-pa.googleapis.com',
 ];
 
 // Models to show in the HUD — filtered from the full list, de-duped by quota bucket
-const INTERESTING_MODEL_IDS = [
+const DEFAULT_INTERESTING_MODEL_IDS = [
   'gemini-3-flash-agent',    // Gemini 3.5 Flash (High)
   'gemini-3.5-flash-low',    // Gemini 3.5 Flash (Medium)
   'gemini-3.1-pro-high',     // Gemini 3.1 Pro (High)
@@ -75,9 +78,9 @@ function normalizeRemainingFraction(value) {
  * @param {Object<string, Object>} models
  * @returns {ModelQuota[]}
  */
-function normalizeQuotaModels(models) {
+function normalizeQuotaModels(models, interestingModelIds = DEFAULT_INTERESTING_MODEL_IDS) {
   const results = [];
-  for (const id of INTERESTING_MODEL_IDS) {
+  for (const id of interestingModelIds) {
     const m = models[id];
     if (!m || !m.quotaInfo) continue;
     const qi = m.quotaInfo;
@@ -104,11 +107,27 @@ function createUnavailableQuotaResult(reason) {
  * @returns {{ accessToken: string } | null}
  */
 function readToken() {
+  // Windows: hook writes Credential Manager tokens to a temp file (5 min TTL).
+  // Multiple accounts are stored as an array — caller tries each in order.
+  if (process.platform === 'win32') {
+    try {
+      const tmp = resolveAntigravityPath('agy-hud-token.json');
+      const raw = JSON.parse(fs.readFileSync(tmp, 'utf8'));
+      const ttl = 5 * 60 * 1000;
+      if (raw.writtenAt && Date.now() - raw.writtenAt < ttl && Array.isArray(raw.tokens)) {
+        const valid = raw.tokens.filter(t => t && t.accessToken);
+        if (valid.length > 0) return { accessToken: valid[0].accessToken, all: valid };
+      }
+    } catch { /* fall through to file candidates */ }
+  }
+
   for (const candidate of TOKEN_CANDIDATES) {
     try {
       const raw = JSON.parse(fs.readFileSync(candidate, 'utf8'));
-      const token = raw.token;
-      if (token && token.access_token) return { accessToken: token.access_token };
+      // antigravity-cli format: { token: { access_token } }
+      if (raw.token && raw.token.access_token) return { accessToken: raw.token.access_token };
+      // jetski-standalone format: { access_token } (flat)
+      if (raw.access_token) return { accessToken: raw.access_token };
     } catch { /* try next */ }
   }
   return null;
@@ -159,8 +178,18 @@ function buildHeaders(accessToken) {
  */
 async function fetchQuotaFromCloud(accessToken) {
   let sawAuthFailure = false;
+  const { loadConfig } = require('./config.js');
+  const config = await loadConfig().catch(() => ({}));
 
-  for (const endpoint of ENDPOINTS) {
+  const endpoints = process.env.AGY_HUD_ENDPOINTS
+    ? process.env.AGY_HUD_ENDPOINTS.split(',').map(s => s.trim()).filter(Boolean)
+    : (config.endpoints || DEFAULT_ENDPOINTS);
+
+  const interestingModelIds = process.env.AGY_HUD_INTERESTING_MODELS
+    ? process.env.AGY_HUD_INTERESTING_MODELS.split(',').map(s => s.trim()).filter(Boolean)
+    : (config.interestingModels || DEFAULT_INTERESTING_MODEL_IDS);
+
+  for (const endpoint of endpoints) {
     try {
       const r = await fetch(`${endpoint}/v1internal:fetchAvailableModels`, {
         method: 'POST',
@@ -173,7 +202,7 @@ async function fetchQuotaFromCloud(accessToken) {
       }
       const data = await r.json();
       const models = data.models || {};
-      return normalizeQuotaModels(models);
+      return normalizeQuotaModels(models, interestingModelIds);
     } catch { /* try next endpoint */ }
   }
   return createUnavailableQuotaResult(sawAuthFailure ? 'auth_failed' : 'quota_fetch_failed');
@@ -273,7 +302,10 @@ async function getQuota() {
   const tok = readToken();
   if (!tok) return createUnavailableQuotaResult('not_logged_in');
 
-  const payload = readCachePayload(tok.accessToken);
+  // For multi-account (Windows Credential Manager), use the primary token for
+  // cache keying but fall back to alternates if the primary has no cache.
+  const payload = readCachePayload(tok.accessToken) ||
+    (tok.all && tok.all.slice(1).reduce((acc, t) => acc || readCachePayload(t.accessToken), null));
   const isFresh = payload && isCachePayloadFresh(payload);
 
   if (!isFresh) {
