@@ -33,6 +33,84 @@ function buildCmdShimContents(hudScriptPath) {
   ].join('\r\n');
 }
 
+function buildShShimContents() {
+  return [
+    '@echo off',
+    'setlocal EnableExtensions',
+    'if /I "%~1"=="-c" (',
+    '  set "CMDLINE=%~2"',
+    ') else (',
+    '  set "CMDLINE=%*"',
+    ')',
+    'set "CMDLINE=%CMDLINE:\\"="%"',
+    'cmd.exe /d /s /c "%CMDLINE%"',
+    'exit /b %ERRORLEVEL%',
+    '',
+  ].join('\r\n');
+}
+
+// Discover directories where agy's `sh -c` lookup is likely to land. We
+// deliberately stay narrow: only `%LOCALAPPDATA%\agy\bin` (the agy installer's
+// own bin dir) plus any PATH entry that actually contains `agy.exe`. We do NOT
+// touch `%LOCALAPPDATA%\Microsoft\WindowsApps` (system-managed reparse points,
+// writes there can break App Installer aliases) or `%APPDATA%\npm` /
+// `%USERPROFILE%\App` (unrelated to agy — risk shadowing other tools' `sh`).
+function getWindowsAgyBinDirs(env = process.env) {
+  const dirs = [];
+
+  if (env.LOCALAPPDATA) {
+    dirs.push(path.join(env.LOCALAPPDATA, 'agy', 'bin'));
+  }
+
+  const pathEntries = (env.PATH || env.Path || '')
+    .split(path.delimiter)
+    .map(entry => entry.trim())
+    .filter(Boolean);
+
+  for (const dir of pathEntries) {
+    if (fs.existsSync(path.join(dir, 'agy.exe'))) {
+      dirs.push(dir);
+    }
+  }
+
+  return [...new Set(dirs.map(dir => path.resolve(dir)))];
+}
+
+// Write the sh-compat shim, but never overwrite a real `sh` or another tool's
+// shim. We also skip writes when the on-disk content already matches ours so
+// the post-invocation hook doesn't churn the file every agy invocation.
+function ensureWindowsShShim(platform = process.platform, env = process.env) {
+  if (platform !== 'win32') return [];
+
+  const body = buildShShimContents();
+  const written = [];
+  for (const dir of getWindowsAgyBinDirs(env)) {
+    try {
+      if (!fs.existsSync(dir)) continue;
+      // If a real `sh.exe` lives here (Git Bash, MSYS, busybox, …) we MUST NOT
+      // shadow it — cmd.exe resolves .exe before .cmd/.bat on PATHEXT order
+      // for some users but not all. Skipping the dir entirely is the safe call.
+      if (fs.existsSync(path.join(dir, 'sh.exe'))) continue;
+
+      for (const name of ['sh.cmd', 'sh.bat']) {
+        const target = path.join(dir, name);
+        // Only overwrite when the file is missing or identical to our shim.
+        // Anything else is third-party and gets left alone.
+        let existing = null;
+        try { existing = fs.readFileSync(target, 'utf8'); } catch { /* missing */ }
+        if (existing === body) continue;
+        if (existing !== null) continue;
+
+        fs.writeFileSync(target, body, 'utf8');
+        written.push(target);
+      }
+    } catch {
+      // Best-effort: statusline still gets configured, and agy logs the failure.
+    }
+  }
+  return written;
+}
+
 /**
  * Write the .cmd shim next to agy-hud.js on Windows. No-op on other platforms.
  * Returns the shim path (or null if not on Windows).
@@ -46,7 +124,13 @@ function writeCmdShim(hudScriptPath, platform = process.platform) {
   const shimPath = hudScriptPath.replace(/\.js$/i, '.cmd');
   const contents = buildCmdShimContents(hudScriptPath);
   fs.mkdirSync(path.dirname(shimPath), { recursive: true });
-  fs.writeFileSync(shimPath, contents, 'utf8');
+  // Skip the write if the on-disk contents already match — the post-invocation
+  // hook runs on every agy invocation, no need to churn the file.
+  let existing = null;
+  try { existing = fs.readFileSync(shimPath, 'utf8'); } catch { /* missing */ }
+  if (existing !== contents) {
+    fs.writeFileSync(shimPath, contents, 'utf8');
+  }
   return shimPath;
 }
 
@@ -71,6 +155,7 @@ function configureStatusLine(baseDir = __dirname) {
 
   // Generate the Windows .cmd shim alongside the HUD script (no-op on Unix).
   writeCmdShim(hudScriptPath);
+  ensureWindowsShShim();
 
   const targetCommand = createStatusLineCommand(hudScriptPath);
 
@@ -97,7 +182,10 @@ function configureStatusLine(baseDir = __dirname) {
 
 module.exports = {
   buildCmdShimContents,
+  buildShShimContents,
   writeCmdShim,
+  ensureWindowsShShim,
+  getWindowsAgyBinDirs,
   createStatusLineCommand,
   configureStatusLine,
   getSettingsPath,
