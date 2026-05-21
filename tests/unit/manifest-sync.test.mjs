@@ -12,17 +12,6 @@ function readManifest(name) {
   return JSON.parse(fs.readFileSync(path.join(projectRoot, name), 'utf8'));
 }
 
-test('plugin.json and gemini-extension.json extensions arrays stay in sync', () => {
-  const plugin = readManifest('plugin.json');
-  const gemini = readManifest('gemini-extension.json');
-
-  assert.deepEqual(
-    [...plugin.pi.extensions].sort(),
-    [...gemini.pi.extensions].sort(),
-    'extensions arrays diverged — keep plugin.json and gemini-extension.json in sync'
-  );
-});
-
 test('plugin.json and gemini-extension.json skills arrays stay in sync', () => {
   const plugin = readManifest('plugin.json');
   const gemini = readManifest('gemini-extension.json');
@@ -34,12 +23,12 @@ test('plugin.json and gemini-extension.json skills arrays stay in sync', () => {
   );
 });
 
-test('every manifest-listed extension file exists on disk', () => {
+test('manifests do not claim agy will import extension entrypoints', () => {
   const plugin = readManifest('plugin.json');
-  for (const rel of plugin.pi.extensions) {
-    const abs = path.join(projectRoot, rel);
-    assert.ok(fs.existsSync(abs), `manifest references missing file: ${rel}`);
-  }
+  const gemini = readManifest('gemini-extension.json');
+
+  assert.equal(plugin.pi.extensions, undefined, 'agy plugin install does not stage pi.extensions as an install component');
+  assert.equal(gemini.pi.extensions, undefined, 'agy plugin install does not stage pi.extensions as an install component');
 });
 
 test('manifests use skills instead of remote-ignored commands', () => {
@@ -48,6 +37,8 @@ test('manifests use skills instead of remote-ignored commands', () => {
 
   assert.equal(plugin.commands, undefined, 'plugin.json must not rely on commands for remote install');
   assert.equal(gemini.commands, undefined, 'gemini-extension.json must not rely on commands for remote install');
+  assert.equal(plugin.mcpServers, undefined, 'plugin.json must not rely on MCP startup as install-time setup');
+  assert.equal(gemini.mcpServers, undefined, 'gemini-extension.json must not rely on MCP startup as install-time setup');
 });
 
 test('setup skill is packaged for remote installs', () => {
@@ -66,14 +57,29 @@ test('setup skill is packaged for remote installs', () => {
   const releaseScript = fs.readFileSync(path.join(projectRoot, 'release.sh'), 'utf8');
   assert.match(releaseScript, /cp -r skills release_tmp\//);
   assert.doesNotMatch(releaseScript, /cp -r commands release_tmp\//);
+  assert.doesNotMatch(releaseScript, /mcp_config\.json/);
+  assert.doesNotMatch(releaseScript, /cp -r mcp release_tmp\//);
+  assert.doesNotMatch(releaseScript, /cp -r hooks release_tmp\//);
 });
 
-test('setup skill drives installed hook bootstrap instead of requiring manual clone', () => {
+test('setup skill downloads runtime and configures statusLine without cloning the repo', () => {
   const setupSkill = fs.readFileSync(path.join(projectRoot, 'skills', 'setup', 'SKILL.md'), 'utf8');
 
-  assert.match(setupSkill, /post_invocation_hooks/);
-  assert.match(setupSkill, /plugins[/\\]agy-hud[/\\]hooks\.json/);
+  assert.match(setupSkill, /Configure agy-hud/i);
+  assert.match(setupSkill, /scripts\/setup-runtime\.js/);
   assert.match(setupSkill, /settings\.statusLine/);
   assert.match(setupSkill, /agy-hud-runtime/);
+  assert.doesNotMatch(setupSkill, /Execute the installed `PostInvocation`/);
+  assert.doesNotMatch(setupSkill, /execSync/);
   assert.doesNotMatch(setupSkill, /git clone https:\/\/github\.com\/icebear0828\/agy-hud\.git/);
+});
+
+test('release package does not ship hook bootstrap as installation automation', () => {
+  const pkg = readManifest('package.json');
+  const releaseScript = fs.readFileSync(path.join(projectRoot, 'release.sh'), 'utf8');
+
+  assert.ok(!pkg.files.includes('hooks'), 'remote hooks are not a valid install-time HUD setup path');
+  assert.equal(pkg.scripts['build:hook'], undefined);
+  assert.doesNotMatch(releaseScript, /hooks\/build-hook\.js/);
+  assert.doesNotMatch(releaseScript, /hooks/);
 });

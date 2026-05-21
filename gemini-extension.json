@@ -4,19 +4,8 @@
   "description": "Premium HUD for agy",
   "main": "extensions/index.js",
   "pi": {
-    "extensions": [
-      "extensions/index.js",
-      "extensions/bin/agy-hud.js",
-      "extensions/parser.js",
-      "extensions/renderer.js",
-      "extensions/quota.js",
-      "extensions/config.js",
-      "extensions/paths.js",
-      "extensions/encoding.js",
-      "extensions/statusline.js",
-      "extensions/install-statusline.js",
-      "extensions/agy-hud.config.json"
-    ],
-    "skills": ["skills/*/SKILL.md"]
+    "skills": [
+      "skills/*/SKILL.md"
+    ]
   }
 }

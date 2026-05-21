@@ -42,7 +42,7 @@ async function main() {
       const [state, config, quotaData] = await Promise.all([
         getSessionState(transcriptPath),
         loadConfig(),
-        getQuota().catch(() => []),
+        getQuota({ fast: true }).catch(() => []),
       ]);
 
       const hudOutput = renderHUD(state, agyData, config, quotaData);

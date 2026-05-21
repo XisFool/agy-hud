@@ -11,10 +11,7 @@ REPO_URL=$(node -e "
 ")
 echo "📦 Preparing release v$VERSION..."
 
-# 1. Rebuild the inline bootstrap hook so hooks.json mirrors inline-bootstrap.js
-node hooks/build-hook.js
-
-# 2. Run tests
+# 1. Run tests
 npm test
 
 # 2. Create standardized flattened .zip package
@@ -24,8 +21,8 @@ mkdir -p release_tmp
 # Copy only whitelisted files (now from root and extensions)
 cp plugin.json package.json README.md gemini-extension.json release_tmp/
 [ -d extensions ] && cp -r extensions release_tmp/ || true
+[ -d scripts ] && cp -r scripts release_tmp/ || true
 [ -d skills ] && cp -r skills release_tmp/ || true
-[ -d hooks ] && cp -r hooks release_tmp/ || true
 
 cd release_tmp
 rm -f ../agy-hud.zip

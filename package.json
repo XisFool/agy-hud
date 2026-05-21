@@ -4,13 +4,12 @@
   "description": "Premium HUD for Antigravity CLI",
   "main": "extensions/index.js",
   "pi": {
-    "extensions": ["extensions/index.js"],
     "skills": ["skills/*/SKILL.md"]
   },
   "files": [
     "extensions",
+    "scripts",
     "skills",
-    "hooks",
     "plugin.json",
     "README.md",
     "package.json"
@@ -25,8 +24,15 @@
   },
   "scripts": {
     "test": "node --test tests/unit/*.test.mjs",
-    "e2e": "node --test tests/e2e/**/*.test.mjs",
-    "build:hook": "node hooks/build-hook.js"
+    "e2e": "node scripts/run-e2e.js",
+    "diagnose:auth": "node scripts/diagnose-auth.js",
+    "diagnose:auth:remote": "node scripts/diagnose-auth-remote.js",
+    "setup:runtime": "node scripts/setup-runtime.js",
+    "verify:install-display": "node scripts/verify-install-display.js",
+    "verify:install-display:remote": "node scripts/verify-install-display-remote.js",
+    "verify:setup-display:remote": "node scripts/verify-setup-display-remote.js",
+    "serve:release": "node scripts/serve-release.js",
+    "serve:source": "node scripts/serve-source.js"
   },
   "keywords": [
     "antigravity",

@@ -1,111 +1,55 @@
 ---
-description: Configure agy-hud as the Antigravity CLI statusLine after plugin install
+description: Configure agy-hud after agy plugin install by preparing runtime files and writing settings.statusLine
 allowed-tools: Bash, Read
 ---
 
 # Configure agy-hud
 
-Use this skill after the user installs the plugin with:
+Use this skill after the user has installed the plugin with:
 
 ```bash
 agy plugin install https://github.com/icebear0828/agy-hud.git
 ```
 
-Do not use `scp`. Do not ask the user to clone this repository. The setup must
-use the installed plugin state under the Antigravity CLI data directory,
-especially `plugins/agy-hud/hooks.json`.
+The plugin installer imports this setup skill, but it does not execute
+JavaScript or hooks automatically. This skill performs the explicit setup step:
+download the agy-hud runtime files, write `settings.statusLine`, verify the HUD
+command itself prints `AGY-HUD`, then verify a fresh signed-in `agy` session
+shows `AGY-HUD`. Setup also attempts one quota-cache refresh; this is allowed
+to skip when agy credentials are missing or expired.
 
-## Procedure
+## Rules
 
-1. Verify that Node.js and Git are available in the current shell.
-2. Find the Antigravity CLI data directory that contains
-   `plugins/agy-hud/hooks.json`.
-3. Validate the existing `settings.json` if it already exists.
-4. Execute the installed `post_invocation_hooks` bootstrap command once.
-5. Verify that `settings.statusLine.command` exists, `agy-hud-runtime` exists,
-   and the configured statusLine command renders `AGY-HUD` with empty stdin.
-6. Tell the user to restart or open a fresh `agy` session if the current
-   session does not pick up the new statusLine immediately.
+- Do not ask the user to clone this repository.
+- Do not run installed hook commands as setup.
+- Do not edit unrelated settings.
+- Preserve existing `settings.json` keys; only replace `settings.statusLine`.
+- Use `node`; if Node.js is missing, stop and report that Node.js is required.
 
-Run this Node script from the user's shell:
+## Setup
+
+1. Confirm `agy plugin list` contains `agy-hud`.
+2. Run this bootstrap. It downloads a small setup script, which then downloads
+   the runtime files into `~/.gemini/antigravity-cli/agy-hud-runtime` and writes
+   `settings.statusLine`.
 
 ```bash
-node <<'NODE'
-'use strict';
-
-const fs = require('fs');
-const os = require('os');
-const path = require('path');
-const cp = require('child_process');
-
-const home = os.homedir();
-const roots = [
-  path.join(home, '.gemini', 'antigravity-cli'),
-  process.env.XDG_DATA_HOME && path.join(process.env.XDG_DATA_HOME, 'antigravity-cli'),
-  process.env.APPDATA && path.join(process.env.APPDATA, 'antigravity-cli'),
-  process.env.LOCALAPPDATA && path.join(process.env.LOCALAPPDATA, 'antigravity-cli'),
-].filter(Boolean);
-const base = roots.find(root => fs.existsSync(path.join(root, 'plugins', 'agy-hud', 'hooks.json'))) || roots[0];
-const hooksPath = path.join(base, 'plugins', 'agy-hud', 'hooks.json');
-const settingsPath = path.join(base, 'settings.json');
-const runtimePath = path.join(base, 'agy-hud-runtime');
-
-function fail(message) {
-  console.error(message);
-  process.exit(1);
-}
-
-function requireTool(bin, args) {
-  try {
-    cp.execFileSync(bin, args, { stdio: 'ignore' });
-  } catch {
-    fail(`${bin} is required for agy-hud setup. Install it, restart the shell, then rerun setup.`);
-  }
-}
-
-requireTool('node', ['--version']);
-requireTool('git', ['--version']);
-
-if (!fs.existsSync(hooksPath)) {
-  fail(`agy-hud is not installed at ${hooksPath}. Run: agy plugin install https://github.com/icebear0828/agy-hud.git`);
-}
-
-if (fs.existsSync(settingsPath)) {
-  try {
-    JSON.parse(fs.readFileSync(settingsPath, 'utf8'));
-  } catch (error) {
-    fail(`Refusing to edit invalid settings JSON at ${settingsPath}: ${error.message}`);
-  }
-}
-
-const hooks = JSON.parse(fs.readFileSync(hooksPath, 'utf8'));
-const hook = (hooks.post_invocation_hooks || []).find(item => item && item.name === 'agy-hud-configure-statusline')
-  || (hooks.post_invocation_hooks || [])[0];
-if (!hook || typeof hook.command !== 'string' || hook.command.trim() === '') {
-  fail(`No executable post_invocation_hooks command found in ${hooksPath}`);
-}
-
-cp.execSync(hook.command, { stdio: 'inherit', shell: true });
-
-const settings = JSON.parse(fs.readFileSync(settingsPath, 'utf8'));
-if (!settings.statusLine || settings.statusLine.type !== 'command' || typeof settings.statusLine.command !== 'string') {
-  fail(`setup did not write settings.statusLine in ${settingsPath}`);
-}
-if (!fs.existsSync(runtimePath)) {
-  fail(`setup did not create agy-hud-runtime at ${runtimePath}`);
-}
-
-const output = cp.execSync(settings.statusLine.command, {
-  input: '',
-  encoding: 'utf8',
-  shell: true,
-  timeout: 10000,
-  env: { ...process.env, AGY_HUD_FORCE_ASCII: '1' },
-});
-if (!/AGY-HUD/.test(output)) {
-  fail(`statusLine command ran but did not render agy-hud output:\n${output}`);
-}
-
-console.log(`agy-hud setup complete. settings.statusLine -> ${settings.statusLine.command}`);
-NODE
+node -e "const fs=require('fs'),https=require('https'),os=require('os'),path=require('path'),cp=require('child_process');const u=process.env.AGY_HUD_SETUP_SCRIPT_URL||'https://raw.githubusercontent.com/icebear0828/agy-hud/main/scripts/setup-runtime.js';const p=path.join(os.tmpdir(),'agy-hud-setup-runtime.js');https.get(u,r=>{let s='';r.on('data',c=>s+=c);r.on('end',()=>{if(r.statusCode!==200){console.error('download failed '+r.statusCode+': '+u);process.exit(1)}fs.writeFileSync(p,s);const o=cp.spawnSync(process.execPath,[p],{stdio:'inherit',env:process.env});process.exit(o.status||0)})}).on('error',e=>{console.error(e.stack||e);process.exit(1)})"
 ```
+
+3. Read `~/.gemini/antigravity-cli/settings.json` and confirm
+   `settings.statusLine.command` points at `agy-hud-runtime`.
+4. Run the configured `settings.statusLine.command` directly and confirm stdout
+   contains `AGY-HUD`. If the machine has valid agy OAuth credentials, this
+   output should include quota rows. If it says `Antigravity token expired`,
+   report that the local agy credential must be refreshed on that machine; do
+   not treat it as a plugin path/install failure.
+5. Open a fresh signed-in `agy` session and confirm the terminal output contains
+   `AGY-HUD`.
+
+Do not use the unauthenticated login screen as the only display check. The HUD
+command does not require login, but agy's login TUI can redraw or clear the
+statusline differently across macOS and Windows.
+
+Report setup as successful only when the `settings.statusLine` check, direct
+HUD command check, and signed-in `agy` observation pass.

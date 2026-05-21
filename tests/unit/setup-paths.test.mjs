@@ -1,11 +1,9 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { execSync, spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { inflateSync } from 'node:zlib';
 import statuslineModule from '../../extensions/statusline.js';
 
 const {
@@ -20,15 +18,6 @@ const {
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const projectRoot = path.resolve(__dirname, '..', '..');
-
-function readRemoteHook() {
-  const hooks = JSON.parse(fs.readFileSync(path.join(projectRoot, 'hooks', 'hooks.json'), 'utf8'));
-  const command = hooks.post_invocation_hooks[0].command;
-  const match = command.match(/^node -e "eval\(require\('zlib'\)\.inflateSync\(Buffer\.from\('([^']+)','base64'\)\)\.toString\('utf8'\)\)"$/);
-  assert.ok(match, `unexpected hook command: ${command}`);
-  const body = inflateSync(Buffer.from(match[1], 'base64')).toString('utf8');
-  return { command, body };
-}
 
 test('setup.sh runs install-statusline.js', () => {
   const setupScript = fs.readFileSync(path.join(projectRoot, 'setup.sh'), 'utf8');
@@ -221,92 +210,4 @@ test('ensureWindowsShShim skips writes when on-disk content already matches', ()
 test('writeCmdShim is a no-op on non-Windows', () => {
   const result = writeCmdShim('/tmp/whatever/agy-hud.js', 'linux');
   assert.equal(result, null);
-});
-
-test('remote install hook writes a Windows-safe statusLine command', () => {
-  const { body } = readRemoteHook();
-
-  // Hook generates .cmd shim on Windows + branches on process.platform
-  assert.match(body, /process\.platform/);
-  assert.match(body, /isWin/);
-  // ".cmd" shim path is referenced in the inline script
-  assert.match(body, /\.cmd/);
-  // agy 1.0.0 launches statusLine through `sh -c` on Windows, so the hook
-  // must also install the compatibility shim and normalize escaped quotes.
-  assert.match(body, /shShimBody/);
-  assert.match(body, /CMDLINE=%CMDLINE/);
-  assert.match(body, /cmd\.exe \/d \/s \/c/);
-  assert.match(body, /CredRead/);
-  assert.match(body, /gemini:antigravity/);
-  assert.match(body, /Text\.Encoding\]::UTF8/);
-  // Regression: never write into WindowsApps or %APPDATA%\npm — those shadow
-  // unrelated tools' `sh` on PATH.
-  assert.doesNotMatch(body, /WindowsApps/);
-  assert.doesNotMatch(body, /APPDATA[^A-Za-z0-9_]+.*npm/);
-  // Guard against shadowing a real sh.exe.
-  assert.match(body, /sh\.exe/);
-});
-
-test('remote install hook command is safe to pass through POSIX shell', () => {
-  const { command } = readRemoteHook();
-
-  // The inline bootstrap contains PowerShell fragments with `$tokens`, `$()`,
-  // and Windows `%...%` variables. Keep those out of the shell-visible command
-  // string so /bin/sh or cmd.exe cannot expand them before Node starts.
-  assert.doesNotMatch(command, /\$\(|\$[A-Za-z_]/);
-  assert.doesNotMatch(command, /%[A-Za-z0-9_~]+%/);
-});
-
-test('remote install hook executes through shell without expansion warnings', () => {
-  const { command } = readRemoteHook();
-  const tempWork = fs.mkdtempSync(path.join(os.tmpdir(), 'agy-hud-shell-hook-'));
-
-  try {
-    const tempHome = path.join(tempWork, 'home');
-    const tempRuntime = path.join(tempWork, 'runtime');
-    const sourceRepo = path.join(tempWork, 'source');
-    const tempSettingsDir = path.join(tempHome, '.gemini', 'antigravity-cli');
-    const sourceHudDir = path.join(sourceRepo, 'extensions', 'bin');
-
-    fs.mkdirSync(tempSettingsDir, { recursive: true });
-    fs.mkdirSync(sourceHudDir, { recursive: true });
-    fs.writeFileSync(path.join(tempSettingsDir, 'settings.json'), '{}\n');
-    fs.writeFileSync(path.join(sourceHudDir, 'agy-hud.js'), 'process.stdout.write("AGY-HUD-SHELL");\n');
-
-    execSync('git init', { cwd: sourceRepo, stdio: 'ignore' });
-    execSync('git add .', { cwd: sourceRepo, stdio: 'ignore' });
-    execSync('git -c user.name=agy-hud-test -c user.email=agy-hud-test@example.com commit -m "init"', {
-      cwd: sourceRepo,
-      stdio: 'ignore',
-    });
-
-    const result = spawnSync(command, {
-      shell: true,
-      encoding: 'utf8',
-      env: {
-        ...process.env,
-        HOME: tempHome,
-        USERPROFILE: tempHome,
-        AGY_HUD_RUNTIME_DIR: tempRuntime,
-        AGY_HUD_REPO_URL: sourceRepo,
-      },
-    });
-
-    assert.equal(result.status, 0, result.stderr || result.stdout);
-    assert.equal(result.stderr, '');
-
-    const settings = JSON.parse(fs.readFileSync(path.join(tempSettingsDir, 'settings.json'), 'utf8'));
-    assert.match(settings.statusLine.command, /extensions[/\\]bin[/\\]agy-hud\.js/);
-    assert.match(execSync(settings.statusLine.command).toString(), /AGY-HUD-SHELL/);
-  } finally {
-    fs.rmSync(tempWork, { recursive: true, force: true });
-  }
-});
-
-test('remote install hook implements rename-with-retry for Windows file locks', () => {
-  const { body } = readRemoteHook();
-
-  assert.match(body, /renameWithRetry/);
-  // Backoff loop runs multiple attempts
-  assert.match(body, /i < 4/);
 });

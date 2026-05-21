@@ -6,11 +6,14 @@ import os from 'node:os';
 import quotaModule from '../../extensions/quota.js';
 
 const {
+  getQuota,
   fetchQuotaFromCloud,
   normalizeQuotaModels,
   isCachePayloadFresh,
   createUnavailableQuotaResult,
   selectUsableTokens,
+  isTokenExpired,
+  parseTokenPayload,
   readToken
 } = quotaModule;
 
@@ -105,6 +108,51 @@ test('selectUsableTokens keeps Windows temp tokens until token expiry', () => {
   assert.deepEqual(freshNoExpiry.map(t => t.accessToken), ['no-expiry-fresh-cache']);
 });
 
+test('isTokenExpired detects expired file tokens with expiry skew', () => {
+  const now = Date.parse('2026-05-21T20:00:00Z');
+
+  assert.equal(
+    isTokenExpired({ accessToken: 'old-token', expiry: '2026-05-21T19:59:30Z' }, now),
+    true
+  );
+  assert.equal(
+    isTokenExpired({ accessToken: 'fresh-token', expiry: '2026-05-21T20:05:00Z' }, now),
+    false
+  );
+  assert.equal(
+    isTokenExpired({ accessToken: 'no-expiry-token' }, now),
+    false
+  );
+});
+
+test('parseTokenPayload supports antigravity-cli and oauth_creds token shapes', () => {
+  assert.deepEqual(
+    parseTokenPayload({
+      token: {
+        access_token: 'cli-token',
+        expiry: '2026-05-20T20:10:00Z'
+      }
+    }),
+    {
+      accessToken: 'cli-token',
+      expiry: '2026-05-20T20:10:00Z',
+      sourceFormat: 'antigravity-cli'
+    }
+  );
+
+  assert.deepEqual(
+    parseTokenPayload({
+      access_token: 'oauth-creds-token',
+      expiry_date: Date.parse('2026-05-20T12:10:00Z')
+    }),
+    {
+      accessToken: 'oauth-creds-token',
+      expiry: '2026-05-20T12:10:00.000Z',
+      sourceFormat: 'oauth-creds'
+    }
+  );
+});
+
 test('readToken only accepts Antigravity token files from configured data roots', () => {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'agy-hud-token-roots-'));
   try {
@@ -129,13 +177,200 @@ test('readToken only accepts Antigravity token files from configured data roots'
       APPDATA: undefined,
       LOCALAPPDATA: undefined,
     }, () => {
-      assert.deepEqual(readToken(), { accessToken: 'antigravity-token' });
+      assert.equal(readToken().accessToken, 'antigravity-token');
 
       fs.rmSync(antigravityTokenPath);
       assert.equal(readToken(), null);
     });
   } finally {
     fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
+test('readToken falls back to ~/.gemini/oauth_creds.json when antigravity-cli token is missing', () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'agy-hud-oauth-creds-'));
+  try {
+    const home = path.join(tmp, 'home');
+    fs.mkdirSync(path.join(home, '.gemini'), { recursive: true });
+    fs.writeFileSync(
+      path.join(home, '.gemini', 'oauth_creds.json'),
+      JSON.stringify({
+        access_token: 'oauth-creds-token',
+        expiry_date: Date.parse('2026-05-20T12:10:00Z'),
+        refresh_token: 'refresh-token'
+      })
+    );
+
+    withEnv({
+      HOME: home,
+      USERPROFILE: home,
+      XDG_DATA_HOME: undefined,
+      APPDATA: undefined,
+      LOCALAPPDATA: undefined,
+    }, () => {
+      const token = readToken();
+      assert.equal(token.accessToken, 'oauth-creds-token');
+      assert.equal(token.sourceFormat, 'oauth-creds');
+      assert.equal(token.sourcePath.endsWith(path.join('.gemini', 'oauth_creds.json')), true);
+    });
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
+test('readToken can skip Windows Credential Manager for statusline fast path', () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'agy-hud-token-fast-'));
+  try {
+    const home = path.join(tmp, 'home');
+    fs.mkdirSync(path.join(home, '.gemini'), { recursive: true });
+
+    withEnv({
+      HOME: home,
+      USERPROFILE: home,
+      XDG_DATA_HOME: undefined,
+      APPDATA: undefined,
+      LOCALAPPDATA: undefined,
+    }, () => {
+      assert.equal(readToken({ platform: 'win32', skipWindowsCredential: true }), null);
+    });
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
+test('readToken can read Windows Credential Manager when the fast path is not requested', () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'agy-hud-token-credential-'));
+  try {
+    const home = path.join(tmp, 'home');
+    fs.mkdirSync(path.join(home, '.gemini'), { recursive: true });
+    let credentialReads = 0;
+
+    withEnv({
+      HOME: home,
+      USERPROFILE: home,
+      XDG_DATA_HOME: undefined,
+      APPDATA: undefined,
+      LOCALAPPDATA: undefined,
+    }, () => {
+      const token = readToken({
+        platform: 'win32',
+        credentialReader: () => {
+          credentialReads += 1;
+          return { accessToken: 'credential-token' };
+        },
+      });
+
+      assert.equal(token.accessToken, 'credential-token');
+      assert.equal(credentialReads, 1);
+    });
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
+test('getQuota fast path returns cached quota without background refresh', async () => {
+  const cachePath = path.join(os.tmpdir(), 'agy-hud-quota-cache.json');
+  const previousCache = fs.existsSync(cachePath) ? fs.readFileSync(cachePath, 'utf8') : null;
+  try {
+    const cachedQuota = [{
+      id: 'gemini-3-flash-agent',
+      displayName: 'Gemini 3.5 Flash (High)',
+      remainingFraction: 0.42,
+      resetTime: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
+    }];
+    quotaModule.writeCache(cachedQuota, 'cached-token');
+
+    let refreshes = 0;
+    const quota = await getQuota({
+      fast: true,
+      tokenReader: () => ({ accessToken: 'cached-token' }),
+      backgroundRefresh: () => { refreshes += 1; },
+    });
+
+    assert.deepEqual(quota, cachedQuota);
+    assert.equal(refreshes, 0);
+  } finally {
+    if (previousCache === null) fs.rmSync(cachePath, { force: true });
+    else fs.writeFileSync(cachePath, previousCache);
+  }
+});
+
+test('getQuota fast path preserves fresh cache when the access token rotates', async () => {
+  const cachePath = path.join(os.tmpdir(), 'agy-hud-quota-cache.json');
+  const previousCache = fs.existsSync(cachePath) ? fs.readFileSync(cachePath, 'utf8') : null;
+  try {
+    const tokenSourcePath = path.join('same-user', 'antigravity-oauth-token');
+    const cachedQuota = [{
+      id: 'gemini-3-flash-agent',
+      displayName: 'Gemini 3.5 Flash (High)',
+      remainingFraction: 0.77,
+      resetTime: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
+    }];
+    quotaModule.writeCache(cachedQuota, {
+      accessToken: 'old-access-token',
+      sourcePath: tokenSourcePath,
+    });
+
+    let refreshes = 0;
+    const quota = await getQuota({
+      fast: true,
+      tokenReader: () => ({
+        accessToken: 'new-access-token',
+        sourcePath: tokenSourcePath,
+      }),
+      backgroundRefresh: () => { refreshes += 1; },
+    });
+
+    assert.deepEqual(quota, cachedQuota);
+    assert.equal(refreshes, 1);
+  } finally {
+    if (previousCache === null) fs.rmSync(cachePath, { force: true });
+    else fs.writeFileSync(cachePath, previousCache);
+  }
+});
+
+test('getQuota fast path starts background refresh when no cache exists', async () => {
+  const cachePath = path.join(os.tmpdir(), 'agy-hud-quota-cache.json');
+  const previousCache = fs.existsSync(cachePath) ? fs.readFileSync(cachePath, 'utf8') : null;
+  try {
+    fs.rmSync(cachePath, { force: true });
+    let refreshes = 0;
+
+    const quota = await getQuota({
+      fast: true,
+      tokenReader: () => ({ accessToken: 'uncached-token' }),
+      backgroundRefresh: () => { refreshes += 1; },
+    });
+
+    assert.deepEqual(quota, []);
+    assert.equal(refreshes, 1);
+  } finally {
+    if (previousCache !== null) fs.writeFileSync(cachePath, previousCache);
+  }
+});
+
+test('getQuota reports expired tokens without spawning quota refresh', async () => {
+  const cachePath = path.join(os.tmpdir(), 'agy-hud-quota-cache.json');
+  const previousCache = fs.existsSync(cachePath) ? fs.readFileSync(cachePath, 'utf8') : null;
+  try {
+    fs.rmSync(cachePath, { force: true });
+    let refreshes = 0;
+
+    const quota = await getQuota({
+      fast: true,
+      tokenReader: () => ({
+        accessToken: 'expired-token',
+        expiry: '2000-01-01T00:00:00.000Z',
+        sourcePath: path.join('expired', 'oauth_creds.json'),
+      }),
+      backgroundRefresh: () => { refreshes += 1; },
+    });
+
+    assert.equal(quota.length, 0);
+    assert.equal(quota.unavailableReason, 'expired_token');
+    assert.equal(refreshes, 0);
+  } finally {
+    if (previousCache !== null) fs.writeFileSync(cachePath, previousCache);
   }
 });
 
@@ -181,22 +416,27 @@ test('fetchQuotaFromCloud returns a fetch diagnostic for transport failures', as
   }
 });
 
-test('readCache / writeCache respects token changes', () => {
+test('readCache / writeCache reuses stable token source across access token refreshes', () => {
   const { readCache, writeCache } = quotaModule;
   const mockData = [{ id: 'gemini-3.5-flash-low', displayName: 'Gemini 3.5 Flash (Medium)', remainingFraction: 0.5, resetTime: null }];
-  
-  // Write cache with token A
-  writeCache(mockData, 'token-A');
-  
-  // Reading with token A should succeed
-  const cachedA = readCache('token-A');
+
+  writeCache(mockData, {
+    accessToken: 'access-token-A',
+    sourcePath: path.join('stable', 'antigravity-oauth-token'),
+  });
+
+  const cachedA = readCache({
+    accessToken: 'access-token-B',
+    sourcePath: path.join('stable', 'antigravity-oauth-token'),
+  });
   assert.deepEqual(cachedA, mockData);
-  
-  // Reading with token B should return null (token change detected)
-  const cachedB = readCache('token-B');
+
+  const cachedB = readCache({
+    accessToken: 'access-token-B',
+    sourcePath: path.join('other', 'antigravity-oauth-token'),
+  });
   assert.equal(cachedB, null);
-  
-  // Clean up
+
   const cachePath = path.join(os.tmpdir(), 'agy-hud-quota-cache.json');
   try {
     fs.unlinkSync(cachePath);

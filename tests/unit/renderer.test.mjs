@@ -90,6 +90,11 @@ test('renderHUD should explain quota fetch and auth failures', () => {
   const agyData = {
     context_window: { total_input_tokens: 1000, total_output_tokens: 200, used_percentage: 5 }
   };
+  const expiredToken = [];
+  Object.defineProperty(expiredToken, 'unavailableReason', {
+    value: 'expired_token',
+    enumerable: false
+  });
   const authFailed = [];
   Object.defineProperty(authFailed, 'unavailableReason', {
     value: 'auth_failed',
@@ -101,6 +106,10 @@ test('renderHUD should explain quota fetch and auth failures', () => {
     enumerable: false
   });
 
+  assert.match(
+    renderHUD(state, agyData, { display: { useNerdFonts: false } }, expiredToken),
+    /Antigravity token expired/
+  );
   assert.match(
     renderHUD(state, agyData, { display: { useNerdFonts: false } }, authFailed),
     /Antigravity auth failed/

@@ -251,6 +251,7 @@ function renderHUD(state, agyData, config, quotaData) {
     const dividerLine = `  ${gray}${glyph.hbar.repeat(columnWidth * 2 + 1)}${reset}`;
     const reasonMessages = {
       not_logged_in: 'not logged into Antigravity',
+      expired_token: 'Antigravity token expired',
       auth_failed: 'Antigravity auth failed',
       quota_fetch_failed: 'quota fetch failed',
     };

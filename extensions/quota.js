@@ -3,8 +3,9 @@
  *
  * Calls the same `fetchAvailableModels` endpoint that agy uses for /usage.
  * Token is auto-discovered from known agy app-data locations across platforms.
- * Results are cached to os.tmpdir()/agy-hud-quota-cache.json keyed by the
- * earliest resetTime, so we never hit the network more than once per window.
+ * Results are cached to os.tmpdir()/agy-hud-quota-cache.json. The cache key is
+ * the stable credential source when available, so access-token rotation does
+ * not hide a still-fresh quota cache from the statusline.
  */
 
 'use strict';
@@ -20,9 +21,17 @@ const { getAntigravityRoots, resolveAntigravityPath } = require('./paths.js');
 // agy stores its OAuth token in different locations depending on the environment.
 // We search in priority order; first readable file wins.
 const ANTIGRAVITY_TOKEN_FILENAME = 'antigravity-oauth-token';
+const OAUTH_CREDS_FILENAME = 'oauth_creds.json';
 
 function getTokenCandidates(roots = getAntigravityRoots()) {
-  return [...new Set(roots.map(root => path.join(root, ANTIGRAVITY_TOKEN_FILENAME)))];
+  const candidates = [];
+  for (const root of roots) {
+    candidates.push(path.join(root, ANTIGRAVITY_TOKEN_FILENAME));
+    if (path.basename(root) === 'antigravity-cli') {
+      candidates.push(path.join(path.dirname(root), OAUTH_CREDS_FILENAME));
+    }
+  }
+  return [...new Set(candidates)];
 }
 
 const CACHE_PATH = path.join(os.tmpdir(), 'agy-hud-quota-cache.json');
@@ -126,9 +135,51 @@ function selectUsableTokens(tokens, writtenAt = 0, now = Date.now()) {
     .filter(token => isUsableAccessToken(token, writtenAt, now));
 }
 
+function isTokenExpired(token, now = Date.now()) {
+  if (!token || !token.expiry) return false;
+  const expiresAt = new Date(token.expiry).getTime();
+  return Number.isFinite(expiresAt) && expiresAt - WINDOWS_TOKEN_EXPIRY_SKEW_MS <= now;
+}
+
 function tokenResultFromTokens(tokens) {
   if (!tokens || tokens.length === 0) return null;
   return { accessToken: tokens[0].accessToken, all: tokens };
+}
+
+function normalizeExpiryDate(value) {
+  if (value === undefined || value === null || value === '') return undefined;
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return new Date(value).toISOString();
+  }
+  if (typeof value === 'string') {
+    if (/^\d+$/.test(value)) {
+      return new Date(Number(value)).toISOString();
+    }
+    return value;
+  }
+  return undefined;
+}
+
+function parseTokenPayload(raw) {
+  if (!raw || typeof raw !== 'object') return null;
+
+  if (raw.token && typeof raw.token === 'object' && raw.token.access_token) {
+    return {
+      accessToken: raw.token.access_token,
+      expiry: normalizeExpiryDate(raw.token.expiry),
+      sourceFormat: 'antigravity-cli',
+    };
+  }
+
+  if (raw.access_token) {
+    return {
+      accessToken: raw.access_token,
+      expiry: normalizeExpiryDate(raw.expiry || raw.expiry_date),
+      sourceFormat: 'oauth-creds',
+    };
+  }
+
+  return null;
 }
 
 function writeWindowsTokenTemp(tokens) {
@@ -136,8 +187,8 @@ function writeWindowsTokenTemp(tokens) {
   try {
     const tmp = resolveAntigravityPath('agy-hud-token.json');
     fs.mkdirSync(path.dirname(tmp), { recursive: true });
-    // mode 0o600 — the file holds an OAuth access token, must match the
-    // permissions used by the bootstrap hook in hooks/inline-bootstrap.js.
+    // mode 0o600 — the file holds OAuth access tokens, so keep permissions
+    // narrow even though this is only a short-lived mirror.
     fs.writeFileSync(tmp, JSON.stringify({ tokens, writtenAt: Date.now() }), { mode: 0o600 });
   } catch { /* best-effort cache */ }
 }
@@ -205,8 +256,8 @@ function buildWindowsCredentialScript() {
   ].join('\n');
 }
 
-function readWindowsCredentialTokens() {
-  if (process.platform !== 'win32') return null;
+function readWindowsCredentialTokens(platform = process.platform) {
+  if (platform !== 'win32') return null;
 
   try {
     const raw = execFileSync('powershell', [
@@ -232,24 +283,33 @@ function readWindowsCredentialTokens() {
 }
 
 /**
- * @returns {{ accessToken: string } | null}
+ * @returns {{ accessToken: string, expiry?: string, sourceFormat?: string, sourcePath?: string, all?: Array<{ accessToken: string, expiry?: string }> } | null}
  */
-function readToken() {
+function readToken(options = {}) {
+  const {
+    platform = process.platform,
+    roots = getAntigravityRoots(),
+    skipWindowsCredential = false,
+    credentialReader = readWindowsCredentialTokens,
+  } = options;
+
   // Windows: agy stores its OAuth token in Credential Manager. Keep a short
   // JSON mirror so normal statusline renders do not spawn PowerShell every time.
-  if (process.platform === 'win32') {
+  if (platform === 'win32') {
     const tempToken = readWindowsTokenTemp();
     if (tempToken) return tempToken;
 
-    const credentialToken = readWindowsCredentialTokens();
-    if (credentialToken) return credentialToken;
+    if (!skipWindowsCredential) {
+      const credentialToken = credentialReader(platform);
+      if (credentialToken) return credentialToken;
+    }
   }
 
-  for (const candidate of getTokenCandidates()) {
+  for (const candidate of getTokenCandidates(roots)) {
     try {
       const raw = JSON.parse(fs.readFileSync(candidate, 'utf8'));
-      // antigravity-cli format: { token: { access_token } }
-      if (raw.token && raw.token.access_token) return { accessToken: raw.token.access_token };
+      const token = parseTokenPayload(raw);
+      if (token) return { ...token, sourcePath: candidate };
     } catch { /* try next */ }
   }
   return null;
@@ -338,17 +398,77 @@ function isCachePayloadFresh(raw) {
     Array.isArray(raw.data);
 }
 
+function hashCacheKey(value) {
+  return crypto.createHash('sha256').update(value).digest('hex');
+}
+
+function normalizeTokenCacheInput(tokenOrAccessToken) {
+  if (typeof tokenOrAccessToken === 'string') {
+    return { accessToken: tokenOrAccessToken };
+  }
+  if (!tokenOrAccessToken || typeof tokenOrAccessToken !== 'object') {
+    return null;
+  }
+  return tokenOrAccessToken;
+}
+
+function getTokenCacheIdentity(tokenOrAccessToken) {
+  const token = normalizeTokenCacheInput(tokenOrAccessToken);
+  if (!token) return null;
+
+  if (token.sourcePath) {
+    return `sourcePath:${path.resolve(token.sourcePath)}`;
+  }
+
+  if (token.sourceFormat) {
+    return `sourceFormat:${token.sourceFormat}`;
+  }
+
+  if (token.accessToken) {
+    return `accessToken:${token.accessToken}`;
+  }
+
+  return null;
+}
+
+function getTokenHash(tokenOrAccessToken) {
+  const token = normalizeTokenCacheInput(tokenOrAccessToken);
+  if (!token || !token.accessToken) return null;
+  return hashCacheKey(token.accessToken);
+}
+
+function getTokenCacheKeyHash(tokenOrAccessToken) {
+  const identity = getTokenCacheIdentity(tokenOrAccessToken);
+  return identity ? hashCacheKey(identity) : null;
+}
+
+function doesCachePayloadMatchToken(raw, tokenOrAccessToken) {
+  if (!raw || !Array.isArray(raw.data)) return false;
+
+  const cacheKeyHash = getTokenCacheKeyHash(tokenOrAccessToken);
+  if (raw.cacheKeyHash && cacheKeyHash && raw.cacheKeyHash === cacheKeyHash) {
+    return true;
+  }
+
+  const tokenHash = getTokenHash(tokenOrAccessToken);
+  return Boolean(raw.tokenHash && tokenHash && raw.tokenHash === tokenHash);
+}
+
+function didAccessTokenRotate(raw, tokenOrAccessToken) {
+  const tokenHash = getTokenHash(tokenOrAccessToken);
+  return Boolean(raw && raw.tokenHash && tokenHash && raw.tokenHash !== tokenHash);
+}
+
 /**
  * Read cached quota if still valid.
- * @param {string} accessToken
+ * @param {string|Object} tokenOrAccessToken
  * @returns {ModelQuota[] | null}
  */
-function readCache(accessToken) {
+function readCache(tokenOrAccessToken) {
   try {
     const raw = JSON.parse(fs.readFileSync(CACHE_PATH, 'utf8'));
     if (!isCachePayloadFresh(raw)) return null;
-    const currentHash = crypto.createHash('sha256').update(accessToken).digest('hex');
-    if (raw.tokenHash !== currentHash) return null;
+    if (!doesCachePayloadMatchToken(raw, tokenOrAccessToken)) return null;
     return raw.data;
   } catch {
     return null;
@@ -358,9 +478,9 @@ function readCache(accessToken) {
 /**
  * Write quota cache. Expires at the earliest resetTime among all buckets.
  * @param {ModelQuota[]} data
- * @param {string} accessToken
+ * @param {string|Object} tokenOrAccessToken
  */
-function writeCache(data, accessToken) {
+function writeCache(data, tokenOrAccessToken) {
   // Find earliest resetTime
   let earliest = Infinity;
   for (const m of data) {
@@ -371,13 +491,15 @@ function writeCache(data, accessToken) {
   }
   // If no resetTime found, cache for 5 minutes
   const expiresAt = isFinite(earliest) ? earliest : Date.now() + 5 * 60 * 1000;
-  const tokenHash = crypto.createHash('sha256').update(accessToken).digest('hex');
+  const cacheKeyHash = getTokenCacheKeyHash(tokenOrAccessToken);
+  const tokenHash = getTokenHash(tokenOrAccessToken);
   const payload = {
     version: CACHE_VERSION,
     expiresAt,
     lastRefreshed: Date.now(),
+    cacheKeyHash,
     tokenHash,
-    data
+    data,
   };
   try {
     fs.writeFileSync(CACHE_PATH, JSON.stringify(payload));
@@ -386,14 +508,13 @@ function writeCache(data, accessToken) {
 
 /**
  * Read the entire raw cache payload (even if expired).
- * @param {string} accessToken
+ * @param {string|Object} tokenOrAccessToken
  * @returns {Object | null}
  */
-function readCachePayload(accessToken) {
+function readCachePayload(tokenOrAccessToken) {
   try {
     const raw = JSON.parse(fs.readFileSync(CACHE_PATH, 'utf8'));
-    const currentHash = crypto.createHash('sha256').update(accessToken).digest('hex');
-    if (raw.tokenHash !== currentHash) return null;
+    if (!doesCachePayloadMatchToken(raw, tokenOrAccessToken)) return null;
     return raw;
   } catch {
     return null;
@@ -420,21 +541,37 @@ function triggerBackgroundRefresh() {
  * Get quota data using a non-blocking Stale-While-Revalidate pattern.
  * @returns {Promise<ModelQuota[]>}
  */
-async function getQuota() {
-  const tok = readToken();
+async function getQuota(options = {}) {
+  const {
+    fast = false,
+    platform = process.platform,
+    tokenReader = readToken,
+    backgroundRefresh = triggerBackgroundRefresh,
+    credentialReader = readWindowsCredentialTokens,
+    roots = getAntigravityRoots(),
+  } = options;
+  const tok = tokenReader({
+    platform,
+    roots,
+    credentialReader,
+    skipWindowsCredential: fast && platform === 'win32',
+  });
   if (!tok) return createUnavailableQuotaResult('not_logged_in');
 
   // For multi-account (Windows Credential Manager), use the primary token for
   // cache keying but fall back to alternates if the primary has no cache.
-  const payload = readCachePayload(tok.accessToken) ||
-    (tok.all && tok.all.slice(1).reduce((acc, t) => acc || readCachePayload(t.accessToken), null));
+  const payload = readCachePayload(tok) ||
+    (tok.all && tok.all.slice(1).reduce((acc, t) => acc || readCachePayload(t), null));
   const isFresh = payload && isCachePayloadFresh(payload);
+  const tokenExpired = isTokenExpired(tok);
+  const needsRefresh = !tokenExpired && (!isFresh || didAccessTokenRotate(payload, tok));
 
-  if (!isFresh) {
+  if (needsRefresh) {
     const lastRefreshed = payload ? payload.lastRefreshed || 0 : 0;
-    // Debounce background refreshes — only spawn one if not refreshed in the last 30s
-    if (Date.now() - lastRefreshed > 30 * 1000) {
-      triggerBackgroundRefresh();
+    // Debounce stale/no-cache refreshes, but refresh immediately when a fresh
+    // cache belongs to the same source and only the access token has rotated.
+    if (didAccessTokenRotate(payload, tok) || Date.now() - lastRefreshed > 30 * 1000) {
+      backgroundRefresh();
     }
   }
 
@@ -442,7 +579,12 @@ async function getQuota() {
     return payload.data;
   }
 
-  // If no cache exists at all, return empty but trigger background load
+  if (tokenExpired) {
+    return createUnavailableQuotaResult('expired_token');
+  }
+
+  // If no cache exists at all, return empty. Non-fast callers trigger the
+  // refresh above; statusline fast path stays bounded and never waits on it.
   return [];
 }
 
@@ -454,7 +596,7 @@ if (process.argv.includes('--refresh')) {
       if (tok) {
         const fresh = await fetchQuotaFromCloud(tok.accessToken);
         if (fresh.length > 0) {
-          writeCache(fresh, tok.accessToken);
+          writeCache(fresh, tok);
         }
       }
     } catch {}
@@ -469,8 +611,12 @@ module.exports = {
   isCachePayloadFresh,
   createUnavailableQuotaResult,
   selectUsableTokens,
+  isTokenExpired,
+  getTokenCandidates,
+  parseTokenPayload,
   readToken,
   readWindowsCredentialTokens,
   readCache,
   writeCache,
+  readCachePayload,
 };
