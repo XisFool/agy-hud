@@ -10,8 +10,26 @@ const {
   normalizeQuotaModels,
   isCachePayloadFresh,
   createUnavailableQuotaResult,
-  selectUsableTokens
+  selectUsableTokens,
+  readToken
 } = quotaModule;
+
+function withEnv(overrides, fn) {
+  const snapshot = {};
+  for (const key of Object.keys(overrides)) {
+    snapshot[key] = process.env[key];
+    if (overrides[key] === undefined) delete process.env[key];
+    else process.env[key] = overrides[key];
+  }
+  try {
+    return fn();
+  } finally {
+    for (const key of Object.keys(snapshot)) {
+      if (snapshot[key] === undefined) delete process.env[key];
+      else process.env[key] = snapshot[key];
+    }
+  }
+}
 
 test('normalizeQuotaModels treats quota buckets without remainingFraction as unlimited (1)', () => {
   const models = {
@@ -85,6 +103,40 @@ test('selectUsableTokens keeps Windows temp tokens until token expiry', () => {
     { accessToken: 'no-expiry-fresh-cache' },
   ], now - 1000, now);
   assert.deepEqual(freshNoExpiry.map(t => t.accessToken), ['no-expiry-fresh-cache']);
+});
+
+test('readToken only accepts Antigravity token files from configured data roots', () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'agy-hud-token-roots-'));
+  try {
+    const home = path.join(tmp, 'home');
+    const xdg = path.join(tmp, 'xdg');
+    fs.mkdirSync(path.join(home, '.gemini'), { recursive: true });
+    fs.mkdirSync(path.join(xdg, 'antigravity-cli'), { recursive: true });
+    fs.writeFileSync(
+      path.join(home, '.gemini', 'jetski-standalone-oauth-token'),
+      JSON.stringify({ access_token: 'legacy-token' })
+    );
+    const antigravityTokenPath = path.join(xdg, 'antigravity-cli', 'antigravity-oauth-token');
+    fs.writeFileSync(
+      antigravityTokenPath,
+      JSON.stringify({ token: { access_token: 'antigravity-token' } })
+    );
+
+    withEnv({
+      HOME: home,
+      USERPROFILE: home,
+      XDG_DATA_HOME: xdg,
+      APPDATA: undefined,
+      LOCALAPPDATA: undefined,
+    }, () => {
+      assert.deepEqual(readToken(), { accessToken: 'antigravity-token' });
+
+      fs.rmSync(antigravityTokenPath);
+      assert.equal(readToken(), null);
+    });
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
 });
 
 test('fetchQuotaFromCloud returns an auth diagnostic for auth failures', async () => {
@@ -194,5 +246,3 @@ test('fetchQuotaFromCloud respects AGY_HUD_ENDPOINTS and AGY_HUD_INTERESTING_MOD
     delete process.env.AGY_HUD_INTERESTING_MODELS;
   }
 });
-
-

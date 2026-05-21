@@ -32,6 +32,19 @@ test('renderHUD should contain branch and steps', () => {
   assert.match(output, /Gem 3.5 Flash\(H\)/); // Simplified model name
 });
 
+test('renderHUD preserves model name suffixes when applying display aliases', () => {
+  const output = renderHUD(
+    { steps: 1, branch: 'main' },
+    {
+      context_window: { total_input_tokens: 0, total_output_tokens: 0, used_percentage: 0 },
+      model: { display_name: 'Gemini 3.5 Flash (High) Preview' }
+    },
+    { display: { useNerdFonts: false, unicode: false } }
+  );
+
+  assert.match(output, /Gem 3\.5 Flash\(H\) Preview/);
+});
+
 test('renderHUD should correctly layout quotas in two aligned columns', () => {
   const state = { steps: 5, branch: 'dev' };
   const agyData = {

@@ -2,6 +2,43 @@
 
 const { supportsUnicode } = require('./encoding.js');
 
+const ANSI_COLORS = {
+  gray: '\x1b[90m',
+  blue: '\x1b[34m',
+  magenta: '\x1b[35m',
+  yellow: '\x1b[33m',
+  cyan: '\x1b[36m',
+  green: '\x1b[32m',
+  red: '\x1b[31m',
+};
+
+const DEFAULT_THRESHOLDS = {
+  warning: 0.7,
+  critical: 0.9,
+};
+
+const DEFAULT_COLUMN_WIDTH = 37;
+const QUOTA_CHROME_WIDTH = 21;
+
+const MODEL_DISPLAY_ALIASES = {
+  'Gemini 3.5 Flash (High)': 'Gem 3.5 Flash(H)',
+  'Gemini 3.5 Flash (Medium)': 'Gem 3.5 Flash(M)',
+  'Gemini 3.1 Pro (High)': 'Gem 3.1 Pro(H)',
+  'Gemini 3.1 Pro (Low)': 'Gem 3.1 Pro(L)',
+  'Claude Sonnet 4.6 (Thinking)': 'Claude 4.6(Th)',
+  'Claude Opus 4.6 (Thinking)': 'Claude Opus(Th)',
+  'GPT-OSS 120B (Medium)': 'GPT-OSS 120B',
+};
+
+function simplifyModelName(name) {
+  if (!name) return '';
+  let simplified = name;
+  for (const [source, alias] of Object.entries(MODEL_DISPLAY_ALIASES)) {
+    simplified = simplified.replace(source, alias);
+  }
+  return simplified;
+}
+
 /**
  * Renders the HUD string for the status line using native ANSI escape codes.
  * Falls back to ASCII when the terminal can't render box-drawing / Nerd Font
@@ -22,20 +59,10 @@ function renderHUD(state, agyData, config, quotaData) {
   // ANSI escape sequences
   const reset = '\x1b[0m';
   const bold = '\x1b[1m';
-  
-  const colors = {
-    gray: '\x1b[90m',
-    blue: '\x1b[34m',
-    magenta: '\x1b[35m',
-    yellow: '\x1b[33m',
-    cyan: '\x1b[36m',
-    green: '\x1b[32m',
-    red: '\x1b[31m',
-  };
 
   const getThemeColor = (key, defaultColor) => {
     const name = config?.theme?.[key] || defaultColor;
-    return colors[name] || colors[defaultColor];
+    return ANSI_COLORS[name] || ANSI_COLORS[defaultColor];
   };
 
   const primaryColor = getThemeColor('primary', 'green');
@@ -44,18 +71,24 @@ function renderHUD(state, agyData, config, quotaData) {
   const criticalColor = getThemeColor('critical', 'red');
 
   const gray = secondaryColor;
-  const blue = colors.blue;
-  const magenta = colors.magenta;
+  const blue = ANSI_COLORS.blue;
+  const magenta = ANSI_COLORS.magenta;
   const yellow = warningColor;
-  const cyan = colors.cyan;
+  const cyan = ANSI_COLORS.cyan;
   const green = primaryColor;
   const red = criticalColor;
 
-  const warnThresh = typeof config?.thresholds?.warning === 'number' ? config.thresholds.warning : 0.7;
-  const critThresh = typeof config?.thresholds?.critical === 'number' ? config.thresholds.critical : 0.9;
+  const warnThresh = typeof config?.thresholds?.warning === 'number'
+    ? config.thresholds.warning
+    : DEFAULT_THRESHOLDS.warning;
+  const critThresh = typeof config?.thresholds?.critical === 'number'
+    ? config.thresholds.critical
+    : DEFAULT_THRESHOLDS.critical;
 
-  const columnWidth = typeof config?.display?.columnWidth === 'number' ? config.display.columnWidth : 37;
-  const nameWidth = Math.max(10, columnWidth - 21);
+  const columnWidth = typeof config?.display?.columnWidth === 'number'
+    ? config.display.columnWidth
+    : DEFAULT_COLUMN_WIDTH;
+  const nameWidth = Math.max(10, columnWidth - QUOTA_CHROME_WIDTH);
 
   // Box-drawing glyphs with ASCII fallback
   const glyph = unicode
@@ -101,21 +134,8 @@ function renderHUD(state, agyData, config, quotaData) {
   const plan = agyData?.plan_tier || 'Free';
   const tasks = agyData?.task_count || 0;
 
-  // Model display name simplification helper
-  const simplifyModelName = (name) => {
-    if (!name) return '';
-    return name
-      .replace('Gemini 3.5 Flash (High)', 'Gem 3.5 Flash(H)')
-      .replace('Gemini 3.5 Flash (Medium)', 'Gem 3.5 Flash(M)')
-      .replace('Gemini 3.1 Pro (High)', 'Gem 3.1 Pro(H)')
-      .replace('Gemini 3.1 Pro (Low)', 'Gem 3.1 Pro(L)')
-      .replace('Claude Sonnet 4.6 (Thinking)', 'Claude 4.6(Th)')
-      .replace('Claude Opus 4.6 (Thinking)', 'Claude Opus(Th)')
-      .replace('GPT-OSS 120B (Medium)', 'GPT-OSS 120B');
-  };
-
   // Extract model information
-  let rawModelName = agyData?.model?.display_name || agyData?.model?.id || 'Unknown Model';
+  const rawModelName = agyData?.model?.display_name || agyData?.model?.id || 'Unknown Model';
   const modelName = simplifyModelName(rawModelName);
 
   const formatTokens = (n) => {

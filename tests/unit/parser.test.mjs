@@ -18,11 +18,32 @@ test('getSessionState should initialize state properly even for missing files', 
   assert.strictEqual(typeof getSessionState, 'function');
 });
 
+test('getSessionState reads the highest transcript step index', async () => {
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'agy-hud-parser-steps-'));
+  try {
+    const transcriptPath = path.join(tempDir, 'transcript.jsonl');
+    fs.writeFileSync(transcriptPath, [
+      JSON.stringify({ step_index: 1 }),
+      'not-json',
+      JSON.stringify({ step_index: 4 }),
+      JSON.stringify({ step_index: 2 }),
+      '',
+    ].join('\n'));
+
+    const state = await getSessionState(transcriptPath);
+
+    assert.equal(state.steps, 4);
+    assert.equal(typeof state.branch, 'string');
+  } finally {
+    fs.rmSync(tempDir, { recursive: true, force: true });
+  }
+});
+
 test('getSessionState falls back outside git repositories without stderr noise', () => {
   const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'agy-hud-parser-non-git-'));
   const script = `
     const { getSessionState } = require(${JSON.stringify(path.join(projectRoot, 'extensions', 'parser.js'))});
-    getSessionState('missing-transcript.jsonl', 0)
+    getSessionState('missing-transcript.jsonl')
       .then(state => process.stdout.write(JSON.stringify(state)));
   `;
 
