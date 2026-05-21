@@ -23,10 +23,57 @@ test('plugin.json and gemini-extension.json extensions arrays stay in sync', () 
   );
 });
 
+test('plugin.json and gemini-extension.json skills arrays stay in sync', () => {
+  const plugin = readManifest('plugin.json');
+  const gemini = readManifest('gemini-extension.json');
+
+  assert.deepEqual(
+    [...plugin.pi.skills].sort(),
+    [...gemini.pi.skills].sort(),
+    'skills arrays diverged - remote install reads gemini-extension.json strictly'
+  );
+});
+
 test('every manifest-listed extension file exists on disk', () => {
   const plugin = readManifest('plugin.json');
   for (const rel of plugin.pi.extensions) {
     const abs = path.join(projectRoot, rel);
     assert.ok(fs.existsSync(abs), `manifest references missing file: ${rel}`);
   }
+});
+
+test('manifests use skills instead of remote-ignored commands', () => {
+  const plugin = readManifest('plugin.json');
+  const gemini = readManifest('gemini-extension.json');
+
+  assert.equal(plugin.commands, undefined, 'plugin.json must not rely on commands for remote install');
+  assert.equal(gemini.commands, undefined, 'gemini-extension.json must not rely on commands for remote install');
+});
+
+test('setup skill is packaged for remote installs', () => {
+  const setupSkill = path.join(projectRoot, 'skills', 'setup', 'SKILL.md');
+  assert.ok(fs.existsSync(setupSkill), 'skills/setup/SKILL.md must exist for agy-hud setup');
+
+  const plugin = readManifest('plugin.json');
+  assert.ok(plugin.pi.skills.includes('skills/*/SKILL.md'), 'plugin.json must list skills/*/SKILL.md');
+
+  const gemini = readManifest('gemini-extension.json');
+  assert.ok(gemini.pi.skills.includes('skills/*/SKILL.md'), 'gemini-extension.json must list skills/*/SKILL.md');
+
+  const pkg = readManifest('package.json');
+  assert.ok(pkg.files.includes('skills'), 'package.json files must include skills');
+
+  const releaseScript = fs.readFileSync(path.join(projectRoot, 'release.sh'), 'utf8');
+  assert.match(releaseScript, /cp -r skills release_tmp\//);
+  assert.doesNotMatch(releaseScript, /cp -r commands release_tmp\//);
+});
+
+test('setup skill drives installed hook bootstrap instead of requiring manual clone', () => {
+  const setupSkill = fs.readFileSync(path.join(projectRoot, 'skills', 'setup', 'SKILL.md'), 'utf8');
+
+  assert.match(setupSkill, /post_invocation_hooks/);
+  assert.match(setupSkill, /plugins[/\\]agy-hud[/\\]hooks\.json/);
+  assert.match(setupSkill, /settings\.statusLine/);
+  assert.match(setupSkill, /agy-hud-runtime/);
+  assert.doesNotMatch(setupSkill, /git clone https:\/\/github\.com\/icebear0828\/agy-hud\.git/);
 });

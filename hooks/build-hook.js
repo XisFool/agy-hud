@@ -11,6 +11,7 @@
 
 const fs = require('fs');
 const path = require('path');
+const zlib = require('zlib');
 
 const HERE = __dirname;
 const PROJECT_ROOT = path.resolve(HERE, '..');
@@ -54,12 +55,14 @@ if (!rawSource.includes('__AGY_HUD_REPO_URL__')) {
 }
 const source = rawSource.replace(/__AGY_HUD_REPO_URL__/g, repoUrl);
 const body = minify(source);
+const encodedBody = zlib.deflateSync(Buffer.from(body, 'utf8')).toString('base64');
+const loader = `eval(require('zlib').inflateSync(Buffer.from('${encodedBody}','base64')).toString('utf8'))`;
 
 const hook = {
   post_invocation_hooks: [
     {
       name: 'agy-hud-configure-statusline',
-      command: 'node -e ' + JSON.stringify(body),
+      command: 'node -e ' + JSON.stringify(loader),
       timeout_ms: 60000,
     },
   ],

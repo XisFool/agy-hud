@@ -5,7 +5,7 @@
   "main": "extensions/index.js",
   "pi": {
     "extensions": ["extensions/index.js"],
-    "skills": ["skills/*.md"]
+    "skills": ["skills/*/SKILL.md"]
   },
   "files": [
     "extensions",
