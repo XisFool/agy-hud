@@ -1,36 +1,50 @@
 # agy-hud
 
-为 Antigravity CLI 量身定制的高级多行终端看板（HUD），灵感源自 `claude-hud`。
+为 Antigravity CLI 量身定制的多行终端状态 HUD，灵感源自 `claude-hud`。
 
-## ✨ 核心特性 (超越 claude-hud)
-- **官方插件支持**：原生集成 `agy plugin` 体系，支持标准化安装。
-- **Git 智能感知**：实时检测分支名及仓库脏状态（Dirty state）。
-- **事件驱动钩子**：基于 `on_step_complete` 实现极低延迟的状态更新。
-- **动态上下文条**：根据可配置阈值自动切换颜色（绿/黄/红）。
-- **原生双语界面**：完美支持中英文切换。
-- **TDD 质量保证**：内置测试套件及 Git Hooks，确保每一行代码都经过验证。
+## ✨ 核心特性
+
+- **原生插件集成**：通过 `agy plugin install` 导入 setup skill 和 hook
+- **真实 Quota 数据**：逆向 `/usage` 接口，直接显示各模型剩余额度 + 重置倒计时
+- **跨平台兼容**：macOS / Linux / Windows 均支持，Unicode 能力自动检测
+- **事件驱动**：agy 执行 `statusLine` 命令，步骤完成后刷新
+- **可配置主题**：颜色、阈值、Nerd Font 全可自定义
 
 ## 🛠️ 安装
 
-### 官方推荐方法 (永久最新版)
+### Git URL（推荐）
+
 ```bash
-agy plugin install https://github.com/icebear0828/agy-hud/releases/latest/download/agy-hud.zip
+agy plugin install https://github.com/icebear0828/agy-hud.git
 ```
 
-远程安装会安装 `post_invocation` hook。hook 运行时会把 runtime 克隆或更新到 agy app data 目录，并自动配置 `settings.json` 的 `statusLine`。
+安装命令会导入 `skills/setup/SKILL.md` 和 `post_invocation` hook。`settings.json` 的 `statusLine` 由安装后的 hook 在首次执行时写入；如果当前会话未立即生效，让 agy 执行 agy-hud 的 setup skill，或重启 / 新开 agy 会话。
 
-### 手动克隆安装 (开发用)
+### 本地开发
+
 ```bash
 git clone https://github.com/icebear0828/agy-hud.git
 cd agy-hud
 ./setup.sh
 ```
 
-## ⚙️ 配置
-编辑项目根目录的 `agy-hud.config.json`，或默认配置 `extensions/agy-hud.config.json` 来进行个性化定制：
-- `theme`: 不同状态的颜色。
-- `display`: 开关 Token 进度条、面包屑路径或 Git 分支显示。
-- `thresholds`: 设置上下文消耗的警告/严重阈值。
+本地开发模式会把 `statusLine` 指向当前仓库。
 
-## 📜 许可证
+## ⚙️ 配置
+
+在项目根目录创建 `agy-hud.config.json`，或编辑 `extensions/agy-hud.config.json`：
+
+```json
+{
+  "theme": { "primary": "green", "warning": "yellow", "critical": "red" },
+  "display": { "useNerdFonts": false, "unicode": true, "showGitBranch": true },
+  "thresholds": { "warning": 0.7, "critical": 0.9 },
+  "language": "auto"
+}
+```
+
+完整配置说明见 [README.md](./README.md)。
+
+## 📜 License
+
 MIT
