@@ -6,7 +6,7 @@
 
 - **原生插件集成**：通过 `agy plugin install` 导入 setup skill 和 hook
 - **真实 Quota 数据**：逆向 `/usage` 接口，直接显示各模型剩余额度 + 重置倒计时
-- **跨平台兼容**：macOS / Linux / Windows 均支持，Unicode 能力自动检测
+- **跨平台兼容**：macOS / Linux / Windows 均支持，Unicode / ASCII 可配置
 - **事件驱动**：agy 执行 `statusLine` 命令，步骤完成后刷新
 - **可配置主题**：颜色、阈值、Nerd Font 全可自定义
 
@@ -37,9 +37,8 @@ cd agy-hud
 ```json
 {
   "theme": { "primary": "green", "warning": "yellow", "critical": "red" },
-  "display": { "useNerdFonts": false, "unicode": true, "showGitBranch": true },
-  "thresholds": { "warning": 0.7, "critical": 0.9 },
-  "language": "auto"
+  "display": { "useNerdFonts": false, "unicode": true, "columnWidth": 37 },
+  "thresholds": { "warning": 0.7, "critical": 0.9 }
 }
 ```
 
