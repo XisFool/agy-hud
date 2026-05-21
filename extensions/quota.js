@@ -19,12 +19,11 @@ const { getAntigravityRoots, resolveAntigravityPath } = require('./paths.js');
 // ─── Cross-platform token discovery ──────────────────────────────────────────
 // agy stores its OAuth token in different locations depending on the environment.
 // We search in priority order; first readable file wins.
-// Includes both antigravity-cli (standard) and jetski-standalone (older installs)
-// token filenames, each under all known app-data roots.
-const TOKEN_CANDIDATES = [
-  ...getAntigravityRoots().map(root => path.join(root, 'antigravity-oauth-token')),
-  path.join(os.homedir(), '.gemini', 'jetski-standalone-oauth-token'),
-];
+const ANTIGRAVITY_TOKEN_FILENAME = 'antigravity-oauth-token';
+
+function getTokenCandidates(roots = getAntigravityRoots()) {
+  return [...new Set(roots.map(root => path.join(root, ANTIGRAVITY_TOKEN_FILENAME)))];
+}
 
 const CACHE_PATH = path.join(os.tmpdir(), 'agy-hud-quota-cache.json');
 const CACHE_VERSION = 2;
@@ -246,13 +245,11 @@ function readToken() {
     if (credentialToken) return credentialToken;
   }
 
-  for (const candidate of TOKEN_CANDIDATES) {
+  for (const candidate of getTokenCandidates()) {
     try {
       const raw = JSON.parse(fs.readFileSync(candidate, 'utf8'));
       // antigravity-cli format: { token: { access_token } }
       if (raw.token && raw.token.access_token) return { accessToken: raw.token.access_token };
-      // jetski-standalone format: { access_token } (flat)
-      if (raw.access_token) return { accessToken: raw.access_token };
     } catch { /* try next */ }
   }
   return null;

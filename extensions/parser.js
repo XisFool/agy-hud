@@ -12,28 +12,26 @@ const { execSync } = require('child_process');
 /**
  * Parses the transcript log to count steps and get branch info.
  * @param {string} transcriptPath
- * @param {number} fileSize
  * @returns {Promise<SessionState>}
  */
-async function getSessionState(transcriptPath, fileSize) {
+async function getSessionState(transcriptPath) {
   let steps = 0;
   let branch = 'main';
 
   try {
     const fileContent = fs.readFileSync(transcriptPath, 'utf8');
-    const lines = fileContent.split('\n').filter(l => l.trim());
-    
-    for (const line of lines) {
+    for (const line of fileContent.split('\n')) {
+      if (!line.trim()) continue;
       try {
         const entry = JSON.parse(line);
         if (entry.step_index > steps) {
           steps = entry.step_index;
         }
-      } catch (e) {
+      } catch {
         // Skip invalid JSON lines
       }
     }
-  } catch (error) {
+  } catch {
     // File might not exist yet
   }
 
@@ -43,7 +41,7 @@ async function getSessionState(transcriptPath, fileSize) {
       stdio: ['ignore', 'pipe', 'ignore'],
     }).trim();
     branch = gitBranch;
-  } catch (e) {
+  } catch {
     // Not a git repo or git not found
   }
 
@@ -58,7 +56,7 @@ async function getSessionState(transcriptPath, fileSize) {
 function parseAgyInput(jsonStr) {
   try {
     return JSON.parse(jsonStr);
-  } catch (e) {
+  } catch {
     return null;
   }
 }

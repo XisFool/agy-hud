@@ -39,9 +39,8 @@ async function main() {
       ));
 
     try {
-      const stats = fs.existsSync(transcriptPath) ? fs.statSync(transcriptPath) : { size: 0 };
       const [state, config, quotaData] = await Promise.all([
-        getSessionState(transcriptPath, stats.size),
+        getSessionState(transcriptPath),
         loadConfig(),
         getQuota().catch(() => []),
       ]);
