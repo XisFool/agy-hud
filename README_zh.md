@@ -32,7 +32,7 @@ cd agy-hud
 
 ## ⚙️ 配置
 
-在项目根目录创建 `agy-hud.config.json`，或编辑 `extensions/agy-hud.config.json`：
+在运行 agy 的项目目录创建 `agy-hud.config.json` 可覆盖默认配置；未提供项目配置时，HUD 使用 runtime 内的默认配置 `extensions/agy-hud.config.json`：
 
 ```json
 {

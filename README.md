@@ -59,13 +59,13 @@ POST https://daily-cloudcode-pa.googleapis.com/v1internal:fetchAvailableModels
 
 每个 model 对象包含 `quotaInfo.remainingFraction`（剩余比例）和 `quotaInfo.resetTime`（重置时间）。
 
-Token 自动从 agy 的 OAuth 凭据文件读取（跨平台自动搜索），结果本地缓存到重置时间为止，**无后台轮询，无性能影响**。
+Token 自动从 agy 的 OAuth 凭据读取：macOS / Linux 优先搜索 token 文件，Windows 使用 Credential Manager 和短期 token 镜像。Quota 结果本地缓存到重置时间为止，**无后台轮询，无性能影响**。
 
 ---
 
 ## 配置（可选）
 
-在项目根目录创建 `agy-hud.config.json`，或直接编辑插件内的 `extensions/agy-hud.config.json`：
+在运行 agy 的项目目录创建 `agy-hud.config.json` 可覆盖默认配置；未提供项目配置时，HUD 使用 runtime 内的默认配置 `extensions/agy-hud.config.json`：
 
 ```json
 {
