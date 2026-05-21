@@ -17,6 +17,6 @@
       "extensions/install-statusline.js",
       "extensions/agy-hud.config.json"
     ],
-    "skills": ["skills/*.md"]
+    "skills": ["skills/*/SKILL.md"]
   }
 }

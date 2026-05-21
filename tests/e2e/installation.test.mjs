@@ -119,7 +119,12 @@ test('E2E: Official agy plugin installation from remote URL', async (t) => {
     console.log('✅ Installation Successful!');
     assert.strictEqual(exitCode, 0);
     assert.match(stdout, /\[ok\]/);
+    assert.match(stdout, /skills\s+: 1 processed/);
     assert.match(stdout, /hooks\s+: 1 processed/);
+
+    const installedSkillPath = resolveAntigravityPath(path.join('plugins', 'agy-hud', 'skills', 'setup', 'SKILL.md'));
+    assert.ok(fs.existsSync(installedSkillPath), 'setup skill should be installed under plugins/agy-hud/skills/setup/SKILL.md');
+    assert.match(fs.readFileSync(installedSkillPath, 'utf8'), /post_invocation_hooks/);
 
     const installedHooksPath = resolveAntigravityPath(path.join('plugins', 'agy-hud', 'hooks.json'));
     const installedHooks = JSON.parse(fs.readFileSync(installedHooksPath, 'utf8'));
