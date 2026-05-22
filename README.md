@@ -132,7 +132,7 @@ npm run diagnose:auth:remote -- a
 npm run diagnose:auth:remote -- 14323@192.168.10.5
 ```
 
-如果 Windows 只能看到默认 HUD 行但没有 Quota，先看直接运行 HUD 命令的提示；`Antigravity token expired` 表示本机只有过期的 `~/.gemini/oauth_creds.json`，需要在该 Windows 机器上重新完成 agy 登录/刷新凭据，插件安装路径本身不是问题。
+如果 Windows 只能看到默认 HUD 行但没有 Quota，先看直接运行 HUD 命令的提示。Windows 登录态通常在 Credential Manager；SSH 服务会话可能看不到桌面会话的 `gemini:antigravity` 凭据，只能读到过期的 `~/.gemini/oauth_creds.json`。这种情况下 `Antigravity token expired` 不等于桌面 agy 没登录；在桌面会话里重新打开 `agy`，HUD 会触发一次后台 Credential Manager 刷新，下一次渲染应复用短期 token/cache。
 
 远端两步安装显示验证使用：
 
@@ -252,7 +252,7 @@ agy-hud/
 
 ## 跨平台支持
 
-Windows token 刷新来源可包含 Credential Manager；状态栏进程会优先复用短期 `agy-hud-token.json` 镜像，但不会在渲染时直接拉 Credential Manager。其他平台和文件回退按优先级搜索以下路径：
+Windows token 刷新来源可包含 Credential Manager；状态栏进程会优先复用短期 `agy-hud-token.json` 镜像。为了避免状态栏阻塞，它不会在渲染时同步拉 Credential Manager；当 fast path 只看到缺失/过期文件 token 时，会触发 detached 后台刷新，下一次渲染复用短期 token/cache。其他平台和文件回退按优先级搜索以下路径：
 
 | 平台 | 路径 |
 |---|---|

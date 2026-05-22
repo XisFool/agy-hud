@@ -374,6 +374,56 @@ test('getQuota reports expired tokens without spawning quota refresh', async () 
   }
 });
 
+test('getQuota fast path wakes Windows Credential Manager refresh when no token is visible', async () => {
+  const cachePath = path.join(os.tmpdir(), 'agy-hud-quota-cache.json');
+  const previousCache = fs.existsSync(cachePath) ? fs.readFileSync(cachePath, 'utf8') : null;
+  try {
+    fs.rmSync(cachePath, { force: true });
+    let refreshes = 0;
+
+    const quota = await getQuota({
+      fast: true,
+      platform: 'win32',
+      tokenReader: () => null,
+      backgroundRefresh: () => { refreshes += 1; },
+      windowsCredentialRefreshDebounceMs: 0,
+    });
+
+    assert.equal(quota.length, 0);
+    assert.equal(quota.unavailableReason, 'not_logged_in');
+    assert.equal(refreshes, 1);
+  } finally {
+    if (previousCache !== null) fs.writeFileSync(cachePath, previousCache);
+  }
+});
+
+test('getQuota fast path wakes Windows Credential Manager refresh when file token is expired', async () => {
+  const cachePath = path.join(os.tmpdir(), 'agy-hud-quota-cache.json');
+  const previousCache = fs.existsSync(cachePath) ? fs.readFileSync(cachePath, 'utf8') : null;
+  try {
+    fs.rmSync(cachePath, { force: true });
+    let refreshes = 0;
+
+    const quota = await getQuota({
+      fast: true,
+      platform: 'win32',
+      tokenReader: () => ({
+        accessToken: 'expired-file-token',
+        expiry: '2000-01-01T00:00:00.000Z',
+        sourcePath: path.join('expired', 'oauth_creds.json'),
+      }),
+      backgroundRefresh: () => { refreshes += 1; },
+      windowsCredentialRefreshDebounceMs: 0,
+    });
+
+    assert.equal(quota.length, 0);
+    assert.equal(quota.unavailableReason, 'expired_token');
+    assert.equal(refreshes, 1);
+  } finally {
+    if (previousCache !== null) fs.writeFileSync(cachePath, previousCache);
+  }
+});
+
 test('fetchQuotaFromCloud returns an auth diagnostic for auth failures', async () => {
   const originalFetch = globalThis.fetch;
   globalThis.fetch = async (url) => {

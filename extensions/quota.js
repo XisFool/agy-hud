@@ -38,10 +38,12 @@ const CACHE_PATH = path.join(os.tmpdir(), 'agy-hud-quota-cache.json');
 const CACHE_VERSION = 2;
 const WINDOWS_TOKEN_TEMP_TTL_MS = 5 * 60 * 1000;
 const WINDOWS_TOKEN_EXPIRY_SKEW_MS = 60 * 1000;
+const WINDOWS_CREDENTIAL_REFRESH_DEBOUNCE_MS = 30 * 1000;
 const WINDOWS_CREDENTIAL_TARGETS = [
   'gemini:antigravity',
   'LegacyGeneric:target=gemini:antigravity',
 ];
+let lastWindowsCredentialRefreshAt = 0;
 
 // ─── Runtime User-Agent ───────────────────────────────────────────────────────
 // Read version from our own package.json and detect OS/arch at runtime.
@@ -537,6 +539,12 @@ function triggerBackgroundRefresh() {
   } catch { /* ignore spawning issues */ }
 }
 
+function triggerWindowsCredentialRefresh(backgroundRefresh, now, debounceMs) {
+  if (now - lastWindowsCredentialRefreshAt < debounceMs) return;
+  lastWindowsCredentialRefreshAt = now;
+  backgroundRefresh();
+}
+
 /**
  * Get quota data using a non-blocking Stale-While-Revalidate pattern.
  * @returns {Promise<ModelQuota[]>}
@@ -549,14 +557,23 @@ async function getQuota(options = {}) {
     backgroundRefresh = triggerBackgroundRefresh,
     credentialReader = readWindowsCredentialTokens,
     roots = getAntigravityRoots(),
+    windowsCredentialRefreshDebounceMs = WINDOWS_CREDENTIAL_REFRESH_DEBOUNCE_MS,
   } = options;
+  const shouldRefreshWindowsCredential = fast && platform === 'win32';
+  const refreshWindowsCredential = () => {
+    if (!shouldRefreshWindowsCredential) return;
+    triggerWindowsCredentialRefresh(backgroundRefresh, Date.now(), windowsCredentialRefreshDebounceMs);
+  };
   const tok = tokenReader({
     platform,
     roots,
     credentialReader,
     skipWindowsCredential: fast && platform === 'win32',
   });
-  if (!tok) return createUnavailableQuotaResult('not_logged_in');
+  if (!tok) {
+    refreshWindowsCredential();
+    return createUnavailableQuotaResult('not_logged_in');
+  }
 
   // For multi-account (Windows Credential Manager), use the primary token for
   // cache keying but fall back to alternates if the primary has no cache.
@@ -580,6 +597,7 @@ async function getQuota(options = {}) {
   }
 
   if (tokenExpired) {
+    refreshWindowsCredential();
     return createUnavailableQuotaResult('expired_token');
   }
 
