@@ -126,6 +126,10 @@ test('display verifiers require HUD output and installed statusLine state', () =
   assert.match(verifiers, /statusLineReady/);
   assert.match(verifiers, /runtimeReady/);
   assert.match(verifiers, /displayReady/);
+  assert.match(
+    readText('scripts/verify-setup-display-remote.js'),
+    /const displayReady = hudVisible && commandReady && statusLineReady && runtimeReady;/
+  );
 });
 
 test('installer capability probes cover commands and post-invocation hooks', () => {

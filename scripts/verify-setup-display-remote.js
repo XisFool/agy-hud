@@ -445,7 +445,7 @@ process.stdout.write(JSON.stringify({
   const statusLineReady = Boolean(afterObserve.statusLine && /agy-hud/i.test(String(afterObserve.statusLine.command || '')));
   const runtimeReady = Boolean(afterObserve.runtimeHudExists);
   const commandReady = statusLineCommand.ok && statusLineCommandVisible;
-  const displayReady = commandReady && statusLineReady && runtimeReady;
+  const displayReady = hudVisible && commandReady && statusLineReady && runtimeReady;
 
   const report = {
     ok: displayReady,
