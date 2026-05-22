@@ -114,6 +114,8 @@ npm run diagnose:auth:remote -- <ssh-target>
 
 如果 Windows 只能看到默认 HUD 行但没有 Quota，先看直接运行 HUD 命令的提示。Windows 登录态通常在 Credential Manager；SSH 服务会话可能看不到桌面会话的 `gemini:antigravity` 凭据，只能读到过期的 `~/.gemini/oauth_creds.json`。这种情况下 `Antigravity token expired` 不等于桌面 agy 没登录；在桌面会话里重新打开 `agy`，HUD 会触发一次后台 Credential Manager 读取。如果 Credential Manager 里的 access token 仍有效，下一次渲染会复用短期 token/cache；如果 Credential Manager 里的 access token 也已过期，需要先让 agy 自己刷新登录态。
 
+Windows 上 Antigravity CLI 的主 OAuth 凭据存储在 Windows Credential Manager 的 `gemini:antigravity` / `LegacyGeneric:target=gemini:antigravity` 项里，里面包含 `access_token`、`refresh_token`（RT）和 access token 的 `expiry`。agy-hud 目前只读取 `access_token` 和 `expiry`，不会用 RT 换新的 access token。
+
 远端两步安装显示验证：
 
 ```bash

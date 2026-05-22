@@ -55,6 +55,20 @@ test('docs record current agy 1.0.1 install-only limitation and setup-mode bound
   assert.match(docs, /AGY_HUD_E2E_REMOTE_ENV='HOME=\/tmp\/agy-hud-clean'/);
 });
 
+test('docs explain Windows Credential Manager stores refresh token', () => {
+  const docs = [
+    readText('README.md'),
+    readText('README_zh.md'),
+  ].join('\n');
+
+  assert.match(docs, /Windows Credential Manager/);
+  assert.match(docs, /gemini:antigravity/);
+  assert.match(docs, /LegacyGeneric:target=gemini:antigravity/);
+  assert.match(docs, /refresh_token/);
+  assert.match(docs, /RT/);
+  assert.match(docs, /不会用 RT 换新的 access token/);
+});
+
 test('verification scripts do not execute installed hooks or statusLine commands as setup', () => {
   const scripts = [
     readText('scripts/verify-install-display.js'),

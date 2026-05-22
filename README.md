@@ -177,7 +177,7 @@ POST https://daily-cloudcode-pa.googleapis.com/v1internal:fetchAvailableModels
 
 每个 model 对象包含 `quotaInfo.remainingFraction`（剩余比例）和 `quotaInfo.resetTime`（重置时间）。
 
-Token 自动从 agy 的 OAuth 凭据读取：优先搜索 `~/.gemini/antigravity-cli/antigravity-oauth-token`，同时兼容 `~/.gemini/oauth_creds.json`；Windows 的刷新路径可读取 Credential Manager，并写入短期 token 镜像。setup 会尝试刷新一次 Quota cache；状态栏进程只走 fast path：优先读取已有 token / quota cache，不直接拉 Credential Manager，不等待网络请求。cache 缺失、过期或 access token 轮换时，会启动 detached 后台刷新，当前渲染仍保持快速返回。
+Token 自动从 agy 的 OAuth 凭据读取：优先搜索 `~/.gemini/antigravity-cli/antigravity-oauth-token`，同时兼容 `~/.gemini/oauth_creds.json`。Windows 上 Antigravity CLI 的主 OAuth 凭据存储在 Windows Credential Manager 的 `gemini:antigravity` / `LegacyGeneric:target=gemini:antigravity` 项里，里面包含 `access_token`、`refresh_token`（RT）和 access token 的 `expiry`。agy-hud 目前只读取 `access_token` 和 `expiry`，不会用 RT 换新的 access token。Windows 的后台刷新路径可读取 Credential Manager，并写入短期 token 镜像。setup 会尝试刷新一次 Quota cache；状态栏进程只走 fast path：优先读取已有 token / quota cache，不直接拉 Credential Manager，不等待网络请求。cache 缺失、过期或 access token 轮换时，会启动 detached 后台刷新，当前渲染仍保持快速返回。
 
 ---
 
@@ -252,7 +252,7 @@ agy-hud/
 
 ## 跨平台支持
 
-Windows token 刷新来源可包含 Credential Manager；状态栏进程会优先复用短期 `agy-hud-token.json` 镜像。为了避免状态栏阻塞，它不会在渲染时同步拉 Credential Manager；当 fast path 只看到缺失/过期文件 token 时，会触发 detached 后台刷新，下一次渲染复用短期 token/cache。其他平台和文件回退按优先级搜索以下路径：
+Windows token 刷新来源可包含 Credential Manager；Antigravity CLI 会把 OAuth `refresh_token`（RT）和 `access_token` 一起存在 `gemini:antigravity` / `LegacyGeneric:target=gemini:antigravity`。状态栏进程会优先复用短期 `agy-hud-token.json` 镜像。为了避免状态栏阻塞，它不会在渲染时同步拉 Credential Manager；当 fast path 只看到缺失/过期文件 token 时，会触发 detached 后台读取，下一次渲染复用短期 token/cache。当前 agy-hud 不执行 RT 换 access token；如果 Credential Manager 中的 access token 已过期，需要 agy 先刷新登录态。其他平台和文件回退按优先级搜索以下路径：
 
 | 平台 | 路径 |
 |---|---|
