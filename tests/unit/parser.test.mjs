@@ -47,10 +47,15 @@ test('getSessionState falls back outside git repositories without stderr noise',
       .then(state => process.stdout.write(JSON.stringify(state)));
   `;
 
+  const env = { ...process.env };
+  delete env.GIT_DIR;
+  delete env.GIT_WORK_TREE;
+
   const result = spawnSync(process.execPath, ['-e', script], {
     cwd: tempDir,
     encoding: 'utf8',
     stdio: ['ignore', 'pipe', 'pipe'],
+    env,
   });
 
   assert.equal(result.status, 0);

@@ -1,0 +1,11 @@
+{
+  "agy-hud-setup": {
+    "SessionStart": [
+      {
+        "type": "command",
+        "command": "node -e \"const p=require('path'),o=require('os'),fs=require('fs');const getPath=()=>{const ws=p.join(process.cwd(),'.agents','plugins','agy-hud','extensions','statusline.js');if(fs.existsSync(ws))return ws;return p.join(o.homedir(),'.gemini','antigravity-cli','plugins','agy-hud','extensions','statusline.js');};const t=getPath();const {configureStatusLine}=require(t);configureStatusLine(p.dirname(t));\"",
+        "timeout": 10
+      }
+    ]
+  }
+}
