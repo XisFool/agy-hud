@@ -1,6 +1,12 @@
 # agy-hud
 
+[![E2E](https://github.com/icebear0828/agy-hud/actions/workflows/e2e.yml/badge.svg?branch=main)](https://github.com/icebear0828/agy-hud/actions/workflows/e2e.yml)
+[![Release](https://img.shields.io/github/v/release/icebear0828/agy-hud)](https://github.com/icebear0828/agy-hud/releases/latest)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](#license)
+
 > **Antigravity CLI (`agy`)** 的实时 statusline HUD 插件。每个 step 结束自动刷新，展示会话信息、Token 用量和**真实账号 Quota**（与 `/usage` 命令数据一致）。
+>
+> 每次 push 都会在 **macOS · Linux · Windows** 三平台 CI 矩阵跑 install + HUD 渲染验证——上面绿徽章 = 当前可用。
 
 [English](./README.md)
 
@@ -143,21 +149,24 @@ bash uninstall.sh        # macOS / Linux
 
 ```
 agy-hud/
-├── plugin.json           # {"name":"agy-hud"} — agy plugin marker
-├── skills/setup/         # SKILL.md — agent 看到的 setup 手册
-├── runtime/              # bootstrap 下载到 ~/.gemini/.../agy-hud-runtime/runtime/
-│   ├── bin/agy-hud.js    # statusLine 入口（stdin JSON → ANSI HUD）
-│   ├── quota.js          # fetchAvailableModels 客户端（与 /usage 对账）
+├── plugin.json                # {"name":"agy-hud"} — agy plugin marker
+├── gemini-extension.json      # agy 远程安装验证器强制要求
+├── skills/setup/SKILL.md      # agent 看到的"重跑 bootstrap"手册
+├── runtime/                   # bootstrap 下载到 ~/.gemini/.../agy-hud-runtime/runtime/
+│   ├── bin/agy-hud.js         # statusLine 入口（stdin JSON → ANSI HUD）
+│   ├── quota.js               # fetchAvailableModels 客户端（与 /usage 对账）
 │   ├── statusline-installer.js
 │   ├── uninstall.js
 │   └── ...
 ├── scripts/
-│   ├── bootstrap.sh      # 一行安装入口
-│   ├── bootstrap.js      # 实际下载 + 配置逻辑
-│   ├── verify-display.js # E2E：install + bootstrap + observe agy
+│   ├── install.sh             # 一行安装入口（推荐）
+│   ├── bootstrap.sh           # 修复用入口（被 install.sh 调用）
+│   ├── bootstrap.js           # 实际下载 + 配置逻辑
+│   ├── verify-display.js      # E2E：install + bootstrap + PTY 起 agy + 断言 HUD
 │   └── diagnose-auth.js
-├── tests/unit/           # node --test
-└── release.sh
+├── tests/unit/                # node --test
+├── .github/workflows/e2e.yml  # 跨平台 CI 矩阵
+└── release.sh                 # npm test → E2E gate → zip → gh release
 ```
 
 ---
@@ -171,6 +180,31 @@ agy-hud/
 - `$XDG_DATA_HOME/antigravity-cli/antigravity-oauth-token`
 - `$APPDATA/antigravity-cli/antigravity-oauth-token`
 - `$LOCALAPPDATA/antigravity-cli/antigravity-oauth-token`
+
+---
+
+## CI 验证
+
+每次 push 到 `main` 都会跑 [.github/workflows/e2e.yml](./.github/workflows/e2e.yml) 的 3-OS 矩阵：
+
+| OS | install.sh 跑通 | bootstrap 写 settings.json | HUD 命令输出 `AGY-HUD` |
+|----|------|------|------|
+| ubuntu-latest | ✅ | ✅ | ✅ |
+| macos-latest  | ✅ | ✅ | ✅ |
+| windows-latest | ✅ | ✅ | ✅ |
+
+每次 run 上传两份 artifact（保留 14 天）：
+- `e2e-<os>/e2e-report.json` — 完整诊断（`ok` / `hudVisible` / `staleCleaned` 等）
+- `e2e-<os>/agy-hud-pty-*.log` — 带 ANSI 颜色的原始 PTY 字节。`cat` 这文件就能在终端看到带色的 HUD
+
+CI 跑的是 **no-auth 模式**：断言独立 HUD 命令输出横幅。"在真 agy 会话里看见 HUD" 这一层在 dev 机器（有真 OAuth）由 `release.sh` 内置 E2E gate 跑。
+
+---
+
+## 已知问题
+
+- **Windows codepage**：PowerShell 默认 `cp936` 等非 UTF-8 codepage 下，HUD 的 `│ ⎇ ❖ ⚿ ⛁` 会显示成 `�?`。HUD 本身是 UTF-8，shell 里跑一次 `chcp 65001` 或换 Windows Terminal（默认 UTF-8）就好
+- **PNG 截图 artifact**：CI 里用 [vhs](https://github.com/charmbracelet/vhs) 渲 PNG 那步是 `continue-on-error`，偶尔失败丢图；带色的 PTY ANSI log 才是稳定的证据
 
 ---
 
