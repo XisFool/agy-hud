@@ -227,15 +227,26 @@ jobs:
         run: |
           if (-not (Get-Command freeze -ErrorAction SilentlyContinue)) { Write-Host "freeze not installed"; exit 0 }
 
-          $env:AGY_HUD_FORCE_ASCII = '1'
-          "" | & node runtime\bin\agy-hud.js > "$env:TEMP\hud-ascii.ansi"
-          freeze --output "hud-ascii-windows-latest.png" --language ansi "$env:TEMP\hud-ascii.ansi" 2>&1
+          # PowerShell's `>` writes UTF-16 LE with BOM by default — freeze can't
+          # parse that as ANSI text. Capture bytes and write explicit UTF-8.
+          function Capture-Hud([string]$envVar) {
+            if ($envVar) { $env:AGY_HUD_FORCE_ASCII = '1' } else { Remove-Item Env:AGY_HUD_FORCE_ASCII -ErrorAction SilentlyContinue }
+            # Use [void] $null to give node a closed stdin; node reads, sees EOF, renders.
+            $output = "" | & node runtime\bin\agy-hud.js
+            return [string]::Join("`n", $output)
+          }
 
-          Remove-Item Env:AGY_HUD_FORCE_ASCII
-          "" | & node runtime\bin\agy-hud.js > "$env:TEMP\hud-unicode.ansi"
-          freeze --output "hud-unicode-windows-latest.png" --language ansi "$env:TEMP\hud-unicode.ansi" 2>&1
+          $ascii = Capture-Hud 'force'
+          [System.IO.File]::WriteAllText("$env:TEMP\hud-ascii.ansi", $ascii, [System.Text.UTF8Encoding]::new($false))
+          Write-Host "ascii bytes: $((Get-Item "$env:TEMP\hud-ascii.ansi").Length)"
+          freeze --output "hud-ascii-windows-latest.png" --language ansi "$env:TEMP\hud-ascii.ansi"
 
-          Get-ChildItem -Filter "hud-*-windows-latest.png"
+          $unicode = Capture-Hud $null
+          [System.IO.File]::WriteAllText("$env:TEMP\hud-unicode.ansi", $unicode, [System.Text.UTF8Encoding]::new($false))
+          Write-Host "unicode bytes: $((Get-Item "$env:TEMP\hud-unicode.ansi").Length)"
+          freeze --output "hud-unicode-windows-latest.png" --language ansi "$env:TEMP\hud-unicode.ansi"
+
+          Get-ChildItem -Filter "hud-*-windows-latest.png" | Format-List Name, Length
 
       - name: Upload HUD screenshots
         if: always()
