@@ -82,15 +82,11 @@ jobs:
         shell: pwsh
         run: agy --help | Select-Object -First 5
 
-      # Build zip + install agy-hud + bootstrap + assert HUD command renders.
-      # Skips the agy-session PTY observe step (needs OAuth, CI doesn't have).
-      - name: Run E2E (no-auth)
-        env:
-          AGY_HUD_E2E_NO_AUTH_OBSERVE: '1'
-          AGY_HUD_E2E_ARTIFACT_DIR: ${{ runner.temp }}
+      # Build the zip per-OS. Git Bash on Windows has no `zip`; use Compress-Archive.
+      - name: Build zip (Unix)
+        if: runner.os != 'Windows'
         shell: bash
         run: |
-          # Build zip from current tree (release.sh has gh logic we skip in CI)
           mkdir -p release_tmp
           cp plugin.json gemini-extension.json package.json README.md README_zh.md release_tmp/
           cp -r runtime release_tmp/
@@ -99,16 +95,34 @@ jobs:
           (cd release_tmp && zip -qr ../agy-hud.zip .)
           rm -rf release_tmp
 
-          # Run verify-display (no-auth mode)
-          AGY_HUD_SKIP_BUILD=1 node scripts/verify-display.js > "${{ runner.temp }}/e2e-report.json" 2>&1
-          E2E_RC=$?
-          cat "${{ runner.temp }}/e2e-report.json"
+      - name: Build zip (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force release_tmp | Out-Null
+          Copy-Item plugin.json,gemini-extension.json,package.json,README.md,README_zh.md release_tmp\
+          Copy-Item -Recurse runtime,scripts,skills release_tmp\
+          if (Test-Path agy-hud.zip) { Remove-Item agy-hud.zip -Force }
+          Compress-Archive -Path release_tmp\* -DestinationPath agy-hud.zip
+          Remove-Item -Recurse -Force release_tmp
 
-          # Inspect the report.
-          OK=$(node -e "console.log(require('${{ runner.temp }}/e2e-report.json').ok || false)")
+      # Run verify-display in no-auth mode (CI doesn't have OAuth).
+      - name: Run E2E (no-auth)
+        env:
+          AGY_HUD_E2E_NO_AUTH_OBSERVE: '1'
+          AGY_HUD_E2E_ARTIFACT_DIR: ${{ runner.temp }}
+          AGY_HUD_SKIP_BUILD: '1'
+        shell: bash
+        run: |
+          set +e
+          node scripts/verify-display.js > "${{ runner.temp }}/e2e-report.json" 2>&1
+          E2E_RC=$?
+          set -e
+          cat "${{ runner.temp }}/e2e-report.json"
+          OK=$(node -e "try { console.log(require('${{ runner.temp }}/e2e-report.json').ok || false) } catch (e) { console.log('parse_error: ' + e.message) }")
           echo "report.ok = $OK"
           if [ "$E2E_RC" != "0" ] || [ "$OK" != "true" ]; then
-            echo "::error::E2E failed on ${{ matrix.os }}"
+            echo "::error::E2E failed on ${{ matrix.os }} (exit=$E2E_RC ok=$OK)"
             exit 1
           fi
 
