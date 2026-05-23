@@ -49,11 +49,38 @@ jobs:
         shell: pwsh
         run: |
           irm https://antigravity.google/cli/install.ps1 | iex
-          echo "$env:USERPROFILE\.local\bin" >> $env:GITHUB_PATH
+          # agy install.ps1 doesn't always update GITHUB_PATH. Discover where
+          # it actually landed and add that dir.
+          $candidates = @(
+            "$env:USERPROFILE\.local\bin",
+            "$env:LOCALAPPDATA\agy\bin",
+            "$env:LOCALAPPDATA\Programs\agy\bin"
+          )
+          $found = $false
+          foreach ($c in $candidates) {
+            if (Test-Path "$c\agy.exe") {
+              Add-Content -Path $env:GITHUB_PATH -Value $c
+              Write-Host "agy.exe at: $c"
+              $found = $true
+            }
+          }
+          if (-not $found) {
+            Write-Host "candidates empty; searching..."
+            Get-ChildItem -Path $env:USERPROFILE,$env:LOCALAPPDATA -Filter agy.exe -Recurse -ErrorAction SilentlyContinue | ForEach-Object {
+              Write-Host "agy.exe at: $($_.DirectoryName)"
+              Add-Content -Path $env:GITHUB_PATH -Value $_.DirectoryName
+            }
+          }
 
-      - name: Verify agy installed
+      - name: Verify agy installed (Unix)
+        if: runner.os != 'Windows'
         run: agy --help | head -5
         shell: bash
+
+      - name: Verify agy installed (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: agy --help | Select-Object -First 5
 
       # Build zip + install agy-hud + bootstrap + assert HUD command renders.
       # Skips the agy-session PTY observe step (needs OAuth, CI doesn't have).
@@ -105,11 +132,27 @@ jobs:
 
       - name: Install vhs (Linux)
         if: runner.os == 'Linux'
+        continue-on-error: true
         run: |
           sudo apt-get update
-          sudo apt-get install -y ffmpeg
-          curl -fsSL https://github.com/charmbracelet/vhs/releases/latest/download/vhs_Linux_x86_64.tar.gz | tar -xz vhs
-          sudo mv vhs /usr/local/bin/
+          sudo apt-get install -y ffmpeg ttyd
+          # Discover the actual asset name from latest release rather than guessing
+          ASSET_URL=$(curl -fsSL https://api.github.com/repos/charmbracelet/vhs/releases/latest \
+            | grep -oE 'https://[^"]*vhs[^"]*[Ll]inux[^"]*x86_64\.tar\.gz' | head -1)
+          if [ -z "$ASSET_URL" ]; then
+            ASSET_URL=$(curl -fsSL https://api.github.com/repos/charmbracelet/vhs/releases/latest \
+              | grep -oE 'https://[^"]*vhs[^"]*[Ll]inux[^"]*amd64\.tar\.gz' | head -1)
+          fi
+          if [ -z "$ASSET_URL" ]; then
+            echo "could not find vhs Linux asset; skipping screenshot render"
+            exit 0
+          fi
+          echo "vhs asset: $ASSET_URL"
+          curl -fsSL "$ASSET_URL" -o /tmp/vhs.tar.gz
+          tar -xzf /tmp/vhs.tar.gz -C /tmp/
+          VHS_BIN=$(find /tmp -name vhs -type f -executable | head -1)
+          sudo mv "$VHS_BIN" /usr/local/bin/vhs
+          vhs --version
 
       - name: Render HUD screenshot (Unix)
         if: runner.os != 'Windows'
