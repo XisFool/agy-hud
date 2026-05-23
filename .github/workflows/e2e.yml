@@ -227,27 +227,13 @@ jobs:
         run: |
           if (-not (Get-Command freeze -ErrorAction SilentlyContinue)) { Write-Host "freeze not installed"; exit 0 }
 
-          # PowerShell's `>` writes UTF-16 LE with BOM by default — freeze can't
-          # parse that as ANSI text. Capture bytes and write explicit UTF-8.
-          function Capture-Hud([string]$envVar) {
-            if ($envVar) { $env:AGY_HUD_FORCE_ASCII = '1' } else { Remove-Item Env:AGY_HUD_FORCE_ASCII -ErrorAction SilentlyContinue }
-            # Use [void] $null to give node a closed stdin; node reads, sees EOF, renders.
-            $output = "" | & node runtime\bin\agy-hud.js
-            return [string]::Join("`n", $output)
-          }
+          # Skip intermediate-file dance entirely; freeze --execute runs the
+          # command in a PTY internally and captures its ANSI output.
+          $env:AGY_HUD_FORCE_ASCII = '1'
+          freeze --execute "node runtime/bin/agy-hud.js" --output "hud-ascii-windows-latest.png" --language ansi
 
-          # Put input files in CWD with forward-slash-safe naming. freeze on
-          # Windows is finicky with paths containing backslash or %TEMP%.
-          $ascii = Capture-Hud 'force'
-          [System.IO.File]::WriteAllText("$PWD\hud-ascii.ansi", $ascii, [System.Text.UTF8Encoding]::new($false))
-          Write-Host "ascii bytes: $((Get-Item hud-ascii.ansi).Length)"
-          # File path goes FIRST per freeze docs: `freeze main.go [-o out.png] [--flags]`
-          freeze hud-ascii.ansi --output "hud-ascii-windows-latest.png" --language ansi
-
-          $unicode = Capture-Hud $null
-          [System.IO.File]::WriteAllText("$PWD\hud-unicode.ansi", $unicode, [System.Text.UTF8Encoding]::new($false))
-          Write-Host "unicode bytes: $((Get-Item hud-unicode.ansi).Length)"
-          freeze hud-unicode.ansi --output "hud-unicode-windows-latest.png" --language ansi
+          Remove-Item Env:AGY_HUD_FORCE_ASCII
+          freeze --execute "node runtime/bin/agy-hud.js" --output "hud-unicode-windows-latest.png" --language ansi
 
           Get-ChildItem -Filter "hud-*-windows-latest.png" | Format-List Name, Length
 
