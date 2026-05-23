@@ -25,29 +25,40 @@ AGY-HUD │ ⎇ main │ ❖ Plan: Pro │ ⚡ Steps: 42 │ ✓ Tasks: 3
 
 ## 安装
 
-```bash
-# 1. 装插件（agy 自带，stage plugin.json + skills/）
-agy plugin install https://github.com/icebear0828/agy-hud.git
+一条命令搞定（在普通 shell 里跑，**不要**在已打开的 `agy` 会话里跑）：
 
-# 2. 启动 runtime + 写 settings.json statusLine
-#    必须在普通 shell 里跑，不要在已开的 agy 会话里跑
-#    （agy 退出时会用内存里的 settings 覆写磁盘，可能盖掉这次改动）
-bash <(curl -fsSL https://raw.githubusercontent.com/icebear0828/agy-hud/main/scripts/bootstrap.sh)
+```bash
+bash <(curl -fsSL https://raw.githubusercontent.com/icebear0828/agy-hud/main/scripts/install.sh)
 ```
 
-bootstrap **幂等**——任何时候重跑都能修 `statusLine.command` 路径漂移。
+这条命令会：
+1. 干净地重装 plugin（`agy plugin uninstall` + `agy plugin install`）
+2. 下载 HUD runtime 到 `~/.gemini/antigravity-cli/agy-hud-runtime/`
+3. 把 `statusLine.command` 写进 `~/.gemini/antigravity-cli/settings.json`
 
-完成后新开一个 `agy` 会话，终端底部应该看到 HUD。
+新开一个 `agy` 会话，终端底部就是 HUD。
 
-### 为什么要两步？
+**幂等**——任何时候重跑同一命令都能修配置漂移、升级、清掉老版本残留。
 
-`agy plugin install` 只 stage **声明式** 内容（`plugin.json` + `skills/`），不执行 JavaScript；而 statusLine 配置在 `~/.gemini/antigravity-cli/settings.json` 里，跟 plugin 系统是**正交**的。bootstrap 负责把 HUD runtime 下载到 `~/.gemini/antigravity-cli/agy-hud-runtime/`，并把它注册成 statusLine 命令。
+### 为什么不只 `agy plugin install` 一步？
+
+`agy plugin install` 只 stage **声明式** 内容（`plugin.json` + `skills/`），从不执行 JavaScript，也不动 `settings.json`。HUD 的 statusLine 命令和 renderer runtime 是另一层配置。`install.sh` 把这两件事一起做了。
 
 ### Fork / 镜像
 
 ```bash
 AGY_HUD_REPO_RAW=https://raw.githubusercontent.com/your-fork/agy-hud/main \
-  bash <(curl -fsSL "$AGY_HUD_REPO_RAW/scripts/bootstrap.sh")
+AGY_HUD_REPO_URL=https://github.com/your-fork/agy-hud.git \
+  bash <(curl -fsSL "$AGY_HUD_REPO_RAW/scripts/install.sh")
+```
+
+### 手动 / 高级
+
+如果你想分两步自己跑：
+
+```bash
+agy plugin install https://github.com/icebear0828/agy-hud.git
+bash <(curl -fsSL https://raw.githubusercontent.com/icebear0828/agy-hud/main/scripts/bootstrap.sh)
 ```
 
 ---

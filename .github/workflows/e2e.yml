@@ -1,0 +1,146 @@
+name: E2E
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+  workflow_dispatch:
+
+# E2E gate: install agy CLI, install agy-hud, bootstrap, assert HUD command
+# renders AGY-HUD banner. Cross-platform (macOS / Windows / Linux). No OAuth
+# required — we only verify the install/bootstrap plumbing + the standalone
+# HUD command. The auth-required "AGY-HUD visible inside live agy session"
+# check stays in dev / release.sh on a machine with a real signed-in token.
+
+jobs:
+  unit-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - run: npm install
+      - run: npm test
+
+  e2e:
+    name: e2e (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    needs: unit-tests
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      # Install agy CLI per official docs.
+      - name: Install agy CLI (Unix)
+        if: runner.os != 'Windows'
+        run: |
+          curl -fsSL https://antigravity.google/cli/install.sh | bash
+          echo "$HOME/.local/bin" >> $GITHUB_PATH
+
+      - name: Install agy CLI (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          irm https://antigravity.google/cli/install.ps1 | iex
+          echo "$env:USERPROFILE\.local\bin" >> $env:GITHUB_PATH
+
+      - name: Verify agy installed
+        run: agy --help | head -5
+        shell: bash
+
+      # Build zip + install agy-hud + bootstrap + assert HUD command renders.
+      # Skips the agy-session PTY observe step (needs OAuth, CI doesn't have).
+      - name: Run E2E (no-auth)
+        env:
+          AGY_HUD_E2E_NO_AUTH_OBSERVE: '1'
+          AGY_HUD_E2E_ARTIFACT_DIR: ${{ runner.temp }}
+        shell: bash
+        run: |
+          # Build zip from current tree (release.sh has gh logic we skip in CI)
+          mkdir -p release_tmp
+          cp plugin.json gemini-extension.json package.json README.md README_zh.md release_tmp/
+          cp -r runtime release_tmp/
+          cp -r scripts release_tmp/
+          cp -r skills release_tmp/
+          (cd release_tmp && zip -qr ../agy-hud.zip .)
+          rm -rf release_tmp
+
+          # Run verify-display (no-auth mode)
+          AGY_HUD_SKIP_BUILD=1 node scripts/verify-display.js > "${{ runner.temp }}/e2e-report.json" 2>&1
+          E2E_RC=$?
+          cat "${{ runner.temp }}/e2e-report.json"
+
+          # Inspect the report.
+          OK=$(node -e "console.log(require('${{ runner.temp }}/e2e-report.json').ok || false)")
+          echo "report.ok = $OK"
+          if [ "$E2E_RC" != "0" ] || [ "$OK" != "true" ]; then
+            echo "::error::E2E failed on ${{ matrix.os }}"
+            exit 1
+          fi
+
+      - name: Upload PTY artifact + report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-${{ matrix.os }}
+          path: |
+            ${{ runner.temp }}/e2e-report.json
+            ${{ runner.temp }}/agy-hud-pty-*.log
+          if-no-files-found: warn
+          retention-days: 14
+
+      # Render a screenshot of the HUD output. Uses charm.sh `vhs` which
+      # records a tape file → PNG/GIF, so reviewers see an actual image
+      # of the HUD instead of having to cat an ANSI dump.
+      - name: Install vhs (macOS)
+        if: runner.os == 'macOS'
+        run: brew install vhs
+
+      - name: Install vhs (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg
+          curl -fsSL https://github.com/charmbracelet/vhs/releases/latest/download/vhs_Linux_x86_64.tar.gz | tar -xz vhs
+          sudo mv vhs /usr/local/bin/
+
+      - name: Render HUD screenshot (Unix)
+        if: runner.os != 'Windows'
+        shell: bash
+        continue-on-error: true
+        run: |
+          HUD_JS="$HOME/.gemini/antigravity-cli/agy-hud-runtime/runtime/bin/agy-hud.js"
+          if [ ! -f "$HUD_JS" ]; then
+            echo "runtime not present, skipping screenshot"
+            exit 0
+          fi
+          cat > /tmp/hud.tape <<TAPE
+          Output /tmp/hud-${{ matrix.os }}.png
+          Set FontSize 14
+          Set Width 1400
+          Set Height 200
+          Set Theme "Dracula"
+          Hide
+          Type "node $HUD_JS < /dev/null"
+          Enter
+          Show
+          Sleep 2s
+          TAPE
+          vhs /tmp/hud.tape || echo "vhs render failed (non-fatal)"
+          ls -la /tmp/hud-*.png || echo "no PNG produced"
+
+      - name: Upload HUD screenshot
+        if: runner.os != 'Windows'
+        uses: actions/upload-artifact@v4
+        with:
+          name: hud-screenshot-${{ matrix.os }}
+          path: /tmp/hud-*.png
+          if-no-files-found: warn
+          retention-days: 14

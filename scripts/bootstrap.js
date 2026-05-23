@@ -84,6 +84,35 @@ async function readRuntimeFile(relativePath, options) {
   return requestBuffer(sourceUrl(options.sourceBase, relativePath));
 }
 
+// Files staged by older agy-hud versions that the current spec-compliant
+// layout no longer ships. `agy plugin install` only OVERWRITES same-named
+// files — it never deletes ones that disappeared between releases. So an
+// upgrade from v0.1.x leaves an active hooks.json behind that fires its old
+// base64-blob bootstrap on every model step and clobbers settings.json.
+const STALE_PLUGIN_FILES = ['hooks.json', 'mcp_config.json'];
+const STALE_PLUGIN_DIRS = ['agents', 'commands', 'rules', 'extensions'];
+
+function cleanStalePluginFiles(antigravityRoot) {
+  const pluginDir = path.join(antigravityRoot, 'plugins', 'agy-hud');
+  if (!fs.existsSync(pluginDir)) return [];
+  const removed = [];
+  for (const f of STALE_PLUGIN_FILES) {
+    const p = path.join(pluginDir, f);
+    if (fs.existsSync(p)) {
+      fs.rmSync(p, { force: true });
+      removed.push(p);
+    }
+  }
+  for (const d of STALE_PLUGIN_DIRS) {
+    const p = path.join(pluginDir, d);
+    if (fs.existsSync(p)) {
+      fs.rmSync(p, { recursive: true, force: true });
+      removed.push(p);
+    }
+  }
+  return removed;
+}
+
 async function installRuntime(options = {}) {
   const env = options.env || process.env;
   const homeDir = options.homeDir || os.homedir();
@@ -92,6 +121,7 @@ async function installRuntime(options = {}) {
   const antigravityRoot = options.antigravityRoot || pickAntigravityRoot(env, homeDir);
   const runtimeDir = path.join(antigravityRoot, 'agy-hud-runtime');
 
+  const stalePluginFiles = cleanStalePluginFiles(antigravityRoot);
   fs.rmSync(runtimeDir, { recursive: true, force: true });
 
   for (const relativePath of RUNTIME_FILES) {
@@ -115,6 +145,7 @@ async function installRuntime(options = {}) {
     settingsPath: result.settingsPath,
     command: result.command,
     files: RUNTIME_FILES,
+    stalePluginFiles,
     quotaRefresh,
   };
 }
@@ -151,6 +182,9 @@ if (require.main === module) {
       process.stdout.write(`runtime: ${result.runtimeDir}\n`);
       process.stdout.write(`settings: ${result.settingsPath}\n`);
       process.stdout.write(`statusLine: ${result.command}\n`);
+      if (result.stalePluginFiles.length > 0) {
+        process.stdout.write(`cleaned ${result.stalePluginFiles.length} stale plugin file(s) from prior install\n`);
+      }
       if (result.quotaRefresh.status === 'refreshed') {
         process.stdout.write(`quota: refreshed ${result.quotaRefresh.count}\n`);
       } else {
@@ -166,8 +200,11 @@ if (require.main === module) {
 module.exports = {
   DEFAULT_SOURCE_BASE,
   RUNTIME_FILES,
+  STALE_PLUGIN_FILES,
+  STALE_PLUGIN_DIRS,
   getAntigravityRoots,
   pickAntigravityRoot,
+  cleanStalePluginFiles,
   installRuntime,
   refreshQuotaCache,
 };

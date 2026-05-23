@@ -19,7 +19,19 @@ npm test
 #    Skip only with SKIP_E2E=1 for emergency hotfixes — never silently.
 if [ "$SKIP_E2E" != "1" ]; then
   echo "🧪 Running E2E verify-display..."
-  node scripts/verify-display.js --observe-timeout-ms=30000 > /tmp/release-e2e.json 2>&1
+  # Build the zip first so verify-display can serve it without recursing back
+  # into release.sh.
+  echo "  (pre-build zip for E2E)"
+  rm -rf release_tmp
+  mkdir -p release_tmp
+  cp plugin.json gemini-extension.json package.json README.md README_zh.md release_tmp/
+  [ -d runtime ] && cp -r runtime release_tmp/ || true
+  [ -d scripts ] && cp -r scripts release_tmp/ || true
+  [ -d skills ] && cp -r skills release_tmp/ || true
+  cd release_tmp; rm -f ../agy-hud.zip; zip -qr ../agy-hud.zip .; cd ..
+  rm -rf release_tmp
+
+  AGY_HUD_SKIP_BUILD=1 node scripts/verify-display.js --observe-timeout-ms=30000 > /tmp/release-e2e.json 2>&1
   E2E_RC=$?
   if [ $E2E_RC -ne 0 ]; then
     echo "❌ E2E failed (exit $E2E_RC). Full report at /tmp/release-e2e.json"

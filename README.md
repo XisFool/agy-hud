@@ -23,29 +23,40 @@ AGY-HUD │ ⎇ main │ ❖ Plan: Pro │ ⚡ Steps: 42 │ ✓ Tasks: 3
 
 ## Install
 
-```bash
-# 1. Install the plugin (agy stages plugin.json + skills/)
-agy plugin install https://github.com/icebear0828/agy-hud.git
+One command, in a normal shell (NOT inside an active `agy` session):
 
-# 2. Bootstrap the runtime + write settings.json statusLine
-#    Run this in a regular shell, NOT from inside an active agy session
-#    (agy rewrites settings.json from memory on exit and may clobber the change).
-bash <(curl -fsSL https://raw.githubusercontent.com/icebear0828/agy-hud/main/scripts/bootstrap.sh)
+```bash
+bash <(curl -fsSL https://raw.githubusercontent.com/icebear0828/agy-hud/main/scripts/install.sh)
 ```
 
-The bootstrap is **idempotent** — re-run it anytime to repair a broken `statusLine.command` path.
+This:
+1. Cleanly re-installs the plugin (`agy plugin uninstall` + `agy plugin install`)
+2. Downloads the HUD runtime to `~/.gemini/antigravity-cli/agy-hud-runtime/`
+3. Writes `statusLine.command` into `~/.gemini/antigravity-cli/settings.json`
 
-Open a fresh `agy` session. The HUD should appear at the bottom of the terminal.
+Open a fresh `agy` session — the HUD appears at the bottom of the terminal.
 
-### Why two steps?
+**Idempotent** — re-run the same command anytime to repair drift, upgrade, or clean stale files left by older versions.
 
-`agy plugin install` only stages **declarative** plugin content (`plugin.json` + `skills/`). It does not execute JavaScript, and the statusLine is configured in `~/.gemini/antigravity-cli/settings.json` (separate from plugin scope). The bootstrap downloads the HUD runtime to `~/.gemini/antigravity-cli/agy-hud-runtime/` and registers it as the statusLine command.
+### Why not a single `agy plugin install`?
+
+`agy plugin install` only stages **declarative** plugin content (`plugin.json` + `skills/`); it never executes JavaScript and never touches `settings.json`. The HUD's statusLine command and renderer runtime are configured separately. `install.sh` does both pieces atomically.
 
 ### For forks / mirrors
 
 ```bash
 AGY_HUD_REPO_RAW=https://raw.githubusercontent.com/your-fork/agy-hud/main \
-  bash <(curl -fsSL "$AGY_HUD_REPO_RAW/scripts/bootstrap.sh")
+AGY_HUD_REPO_URL=https://github.com/your-fork/agy-hud.git \
+  bash <(curl -fsSL "$AGY_HUD_REPO_RAW/scripts/install.sh")
+```
+
+### Manual / advanced
+
+If you prefer to run the two steps yourself:
+
+```bash
+agy plugin install https://github.com/icebear0828/agy-hud.git
+bash <(curl -fsSL https://raw.githubusercontent.com/icebear0828/agy-hud/main/scripts/bootstrap.sh)
 ```
 
 ---
