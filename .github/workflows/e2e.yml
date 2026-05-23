@@ -236,15 +236,18 @@ jobs:
             return [string]::Join("`n", $output)
           }
 
+          # Put input files in CWD with forward-slash-safe naming. freeze on
+          # Windows is finicky with paths containing backslash or %TEMP%.
           $ascii = Capture-Hud 'force'
-          [System.IO.File]::WriteAllText("$env:TEMP\hud-ascii.ansi", $ascii, [System.Text.UTF8Encoding]::new($false))
-          Write-Host "ascii bytes: $((Get-Item "$env:TEMP\hud-ascii.ansi").Length)"
-          freeze --output "hud-ascii-windows-latest.png" --language ansi "$env:TEMP\hud-ascii.ansi"
+          [System.IO.File]::WriteAllText("$PWD\hud-ascii.ansi", $ascii, [System.Text.UTF8Encoding]::new($false))
+          Write-Host "ascii bytes: $((Get-Item hud-ascii.ansi).Length)"
+          # File path goes FIRST per freeze docs: `freeze main.go [-o out.png] [--flags]`
+          freeze hud-ascii.ansi --output "hud-ascii-windows-latest.png" --language ansi
 
           $unicode = Capture-Hud $null
-          [System.IO.File]::WriteAllText("$env:TEMP\hud-unicode.ansi", $unicode, [System.Text.UTF8Encoding]::new($false))
-          Write-Host "unicode bytes: $((Get-Item "$env:TEMP\hud-unicode.ansi").Length)"
-          freeze --output "hud-unicode-windows-latest.png" --language ansi "$env:TEMP\hud-unicode.ansi"
+          [System.IO.File]::WriteAllText("$PWD\hud-unicode.ansi", $unicode, [System.Text.UTF8Encoding]::new($false))
+          Write-Host "unicode bytes: $((Get-Item hud-unicode.ansi).Length)"
+          freeze hud-unicode.ansi --output "hud-unicode-windows-latest.png" --language ansi
 
           Get-ChildItem -Filter "hud-*-windows-latest.png" | Format-List Name, Length
 
