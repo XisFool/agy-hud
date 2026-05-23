@@ -203,8 +203,9 @@ CI 跑的是 **no-auth 模式**：断言独立 HUD 命令输出横幅。"在真 
 
 ## 已知问题
 
-- **Windows codepage**：PowerShell 默认 `cp936` 等非 UTF-8 codepage 下，HUD 的 `│ ⎇ ❖ ⚿ ⛁` 会显示成 `�?`。HUD 本身是 UTF-8，shell 里跑一次 `chcp 65001` 或换 Windows Terminal（默认 UTF-8）就好
 - **PNG 截图 artifact**：CI 里用 [vhs](https://github.com/charmbracelet/vhs) 渲 PNG 那步是 `continue-on-error`，偶尔失败丢图；带色的 PTY ANSI log 才是稳定的证据
+
+> **Windows 用户提示**：HUD 会自动检测你的 console codepage。`cp936` / `cp1252` 等非 UTF-8 codepage 下会自动 fallback 到 ASCII 字形（`|`、`[B]`、`[P]`…）。想看好看的 UTF-8 框线字符（`│`、`⎇`、`❖`…），用 Windows Terminal（默认 UTF-8）或者先在 shell 里跑一次 `chcp 65001` 再开 `agy`
 
 ---
 

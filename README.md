@@ -203,8 +203,9 @@ CI runs in **no-auth mode**: it asserts the standalone HUD command renders the b
 
 ## Known issues
 
-- **Windows codepage**: on PowerShell with default `cp936` (and similar non-UTF8 codepages), HUD glyphs `│ ⎇ ❖ ⚿ ⛁` render as `�?`. The HUD itself is UTF-8 — set `chcp 65001` once in your shell or use Windows Terminal which defaults to UTF-8.
 - **PNG screenshot artifact**: the CI step that renders a PNG via [vhs](https://github.com/charmbracelet/vhs) is `continue-on-error` and currently sometimes drops; the raw PTY ANSI log is the reliable evidence.
+
+> **Note for Windows users**: the HUD auto-detects your console codepage. On `cp936` / `cp1252` (etc) it falls back to ASCII glyphs (`|`, `[B]`, `[P]`, …). To get the prettier UTF-8 box-drawing characters (`│`, `⎇`, `❖`, …), use Windows Terminal (defaults to UTF-8) or run `chcp 65001` once in your shell before opening `agy`.
 
 ---
 
