@@ -1,6 +1,14 @@
 # agy-hud
 
-> Real-time statusline HUD plugin for **Antigravity CLI (`agy`)**. Refreshes after every step with session info, token usage, and **real account quota** (same numbers as `/usage`).
+[![E2E](https://github.com/icebear0828/agy-hud/actions/workflows/e2e.yml/badge.svg?branch=main)](https://github.com/icebear0828/agy-hud/actions/workflows/e2e.yml)
+[![Release](https://img.shields.io/github/v/release/icebear0828/agy-hud)](https://github.com/icebear0828/agy-hud/releases/latest)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](#license)
+
+> Real-time statusline HUD plugin for **Antigravity CLI (`agy`)**. Refreshes after every step with session info, token usage, and **real account quota** (matches `/usage` numbers).
+>
+> CI verifies install + HUD render on **macOS, Linux, Windows** on every push — green badge above means it works.
+
+[简体中文](./README_zh.md)
 
 ---
 
@@ -141,21 +149,24 @@ Optional. Create `agy-hud.config.json` at the workspace root to override default
 
 ```
 agy-hud/
-├── plugin.json           # {"name":"agy-hud"} — agy plugin marker
-├── skills/setup/         # SKILL.md — agent-facing setup runbook
-├── runtime/              # downloaded by bootstrap to ~/.gemini/.../agy-hud-runtime/runtime/
-│   ├── bin/agy-hud.js    # statusLine entry (stdin JSON → ANSI HUD)
-│   ├── quota.js          # fetchAvailableModels client (matches /usage)
+├── plugin.json                # {"name":"agy-hud"} — agy plugin marker
+├── gemini-extension.json      # required by agy's remote-install validator
+├── skills/setup/SKILL.md      # agent-facing "re-run bootstrap" runbook
+├── runtime/                   # downloaded by bootstrap to ~/.gemini/.../agy-hud-runtime/runtime/
+│   ├── bin/agy-hud.js         # statusLine entry (stdin JSON → ANSI HUD)
+│   ├── quota.js               # fetchAvailableModels client (matches /usage)
 │   ├── statusline-installer.js
 │   ├── uninstall.js
 │   └── ...
 ├── scripts/
-│   ├── bootstrap.sh      # one-shot installer
-│   ├── bootstrap.js      # actual download + configure logic
-│   ├── verify-display.js # E2E install + bootstrap + observe agy
+│   ├── install.sh             # one-command installer (recommended)
+│   ├── bootstrap.sh           # repair-only entry (called by install.sh)
+│   ├── bootstrap.js           # actual download + configure logic
+│   ├── verify-display.js      # E2E: install + bootstrap + PTY-spawn agy + assert HUD
 │   └── diagnose-auth.js
-├── tests/unit/           # node --test
-└── release.sh
+├── tests/unit/                # node --test
+├── .github/workflows/e2e.yml  # cross-platform CI matrix
+└── release.sh                 # npm test → E2E gate → zip → gh release
 ```
 
 ---
@@ -169,6 +180,31 @@ agy-hud/
 - `$XDG_DATA_HOME/antigravity-cli/antigravity-oauth-token`
 - `$APPDATA/antigravity-cli/antigravity-oauth-token`
 - `$LOCALAPPDATA/antigravity-cli/antigravity-oauth-token`
+
+---
+
+## Verified by CI
+
+Every push to `main` runs [.github/workflows/e2e.yml](./.github/workflows/e2e.yml) against a 3-OS matrix:
+
+| OS | install.sh runs | bootstrap writes settings.json | HUD command renders `AGY-HUD` |
+|----|------|------|------|
+| ubuntu-latest | ✅ | ✅ | ✅ |
+| macos-latest  | ✅ | ✅ | ✅ |
+| windows-latest | ✅ | ✅ | ✅ |
+
+Each run uploads two artifacts (14-day retention):
+- `e2e-<os>/e2e-report.json` — full diagnostic (`ok`, `hudVisible`, `staleCleaned`, etc)
+- `e2e-<os>/agy-hud-pty-*.log` — raw PTY bytes with ANSI colors. `cat` it in your terminal to see the HUD render.
+
+CI runs in **no-auth mode**: it asserts the standalone HUD command renders the banner. The full "HUD visible inside a live `agy` session with model-step trigger" check runs on dev machines (with real OAuth) via `release.sh`'s built-in E2E gate.
+
+---
+
+## Known issues
+
+- **Windows codepage**: on PowerShell with default `cp936` (and similar non-UTF8 codepages), HUD glyphs `│ ⎇ ❖ ⚿ ⛁` render as `�?`. The HUD itself is UTF-8 — set `chcp 65001` once in your shell or use Windows Terminal which defaults to UTF-8.
+- **PNG screenshot artifact**: the CI step that renders a PNG via [vhs](https://github.com/charmbracelet/vhs) is `continue-on-error` and currently sometimes drops; the raw PTY ANSI log is the reliable evidence.
 
 ---
 
