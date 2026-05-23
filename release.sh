@@ -22,7 +22,7 @@ mkdir -p release_tmp
 # plugin.json + skills/ are the only things agy actually stages from the zip;
 # runtime/ + scripts/ are downloaded fresh by bootstrap on each install,
 # so they are bundled in the zip only as a fallback source.
-cp plugin.json package.json README.md README_zh.md release_tmp/
+cp plugin.json gemini-extension.json package.json README.md README_zh.md release_tmp/
 [ -d runtime ] && cp -r runtime release_tmp/ || true
 [ -d scripts ] && cp -r scripts release_tmp/ || true
 [ -d skills ] && cp -r skills release_tmp/ || true
