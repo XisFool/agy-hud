@@ -172,22 +172,12 @@ jobs:
           sudo mv "$FREEZE_BIN" /usr/local/bin/freeze
           freeze --version
 
-      - name: Install freeze (Windows)
-        if: runner.os == 'Windows'
-        continue-on-error: true
-        shell: pwsh
-        run: |
-          $latest = irm https://api.github.com/repos/charmbracelet/freeze/releases/latest
-          $asset = $latest.assets | Where-Object { $_.name -match 'Windows.*x86_64.*\.zip$' } | Select-Object -First 1
-          if (-not $asset) {
-            Write-Host "no freeze Windows zip asset"
-            exit 0
-          }
-          Invoke-WebRequest -UseBasicParsing -Uri $asset.browser_download_url -OutFile $env:TEMP\freeze.zip
-          Expand-Archive -Path $env:TEMP\freeze.zip -DestinationPath $env:TEMP\freeze-extract -Force
-          $bin = Get-ChildItem -Path $env:TEMP\freeze-extract -Filter freeze.exe -Recurse | Select-Object -First 1
-          Add-Content -Path $env:GITHUB_PATH -Value $bin.DirectoryName
-          & $bin.FullName --version
+      # NOTE: skipping freeze install on Windows. v0.2.2 errors 'No input' for
+      # every invocation form we tried (positional file, --execute, UTF-8 file
+      # written via .NET WriteAllText). Likely an upstream Windows-only bug.
+      # Windows still gets the e2e-report.json + agy-hud-pty-*.log artifacts
+      # (raw ANSI bytes that reviewers can `cat` for visual evidence) — only
+      # the rendered PNG is missing on this OS.
 
       # Render from the repo's runtime/ directly — don't depend on a HOME-installed
       # runtime (verify-display.js installs into an isolated tmp HOME then cleans up,
@@ -220,25 +210,8 @@ jobs:
 
           ls -la hud-*-${{ matrix.os }}.png 2>/dev/null || echo "no PNGs produced"
 
-      - name: Render HUD screenshots (Windows)
-        if: runner.os == 'Windows'
-        shell: pwsh
-        continue-on-error: true
-        run: |
-          if (-not (Get-Command freeze -ErrorAction SilentlyContinue)) { Write-Host "freeze not installed"; exit 0 }
-
-          # Skip intermediate-file dance entirely; freeze --execute runs the
-          # command in a PTY internally and captures its ANSI output.
-          $env:AGY_HUD_FORCE_ASCII = '1'
-          freeze --execute "node runtime/bin/agy-hud.js" --output "hud-ascii-windows-latest.png" --language ansi
-
-          Remove-Item Env:AGY_HUD_FORCE_ASCII
-          freeze --execute "node runtime/bin/agy-hud.js" --output "hud-unicode-windows-latest.png" --language ansi
-
-          Get-ChildItem -Filter "hud-*-windows-latest.png" | Format-List Name, Length
-
       - name: Upload HUD screenshots
-        if: always()
+        if: runner.os != 'Windows'
         uses: actions/upload-artifact@v4
         with:
           name: hud-screenshot-${{ matrix.os }}
