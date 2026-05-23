@@ -1,160 +1,168 @@
 # agy-hud
 
-为 Antigravity CLI 量身定制的多行终端状态 HUD，灵感源自 `claude-hud`。
+> **Antigravity CLI (`agy`)** 的实时 statusline HUD 插件。每个 step 结束自动刷新，展示会话信息、Token 用量和**真实账号 Quota**（与 `/usage` 命令数据一致）。
 
-## ✨ 核心特性
+[English](./README.md)
 
-- **原生插件集成**：通过 `agy plugin install` 导入 setup skill，再由 setup skill 自动配置
-- **真实 Quota 数据**：逆向 `/usage` 接口，直接显示各模型剩余额度 + 重置倒计时
-- **跨平台兼容**：macOS / Linux / Windows 均支持，Unicode / ASCII 可配置
-- **事件驱动**：agy 执行 `statusLine` 命令，步骤完成后刷新
-- **可配置主题**：颜色、阈值、Nerd Font 全可自定义
+---
 
-## 🛠️ 安装
+## 显示效果
 
-### Git URL + setup skill（推荐）
+```
+AGY-HUD │ ⎇ main │ ❖ Plan: Pro │ ⚡ Steps: 42 │ ✓ Tasks: 3
+⚿ Tokens: 85.2k │ ⛁ Ctx: 85.2k/200.0k [████░░░░░░] │ 🤖 Model: Claude Sonnet 4.6
+  ───────────────────────────────────────────────────────────────────────────
+  Gem 3.5 Flash(H) [████░░]  60% ~3h │ Gem 3.5 Flash(M) [████░░]  60% ~3h
+  Claude 4.6(Th)   [██████] 100% ~5h │ Claude Opus(Th)  [██████] 100% ~5h
+  GPT-OSS 120B     [██████] 100% ~5h │
+```
 
-两步安装，和 `claude-hud` 的 setup command 模式一致：
+- **第一行**：分支、套餐、步骤数、任务数
+- **第二行**：Token 用量、上下文进度条、当前模型
+- **Quota 行**：每个模型的账号剩余额度 + 重置倒计时
+
+---
+
+## 安装
 
 ```bash
+# 1. 装插件（agy 自带，stage plugin.json + skills/）
 agy plugin install https://github.com/icebear0828/agy-hud.git
+
+# 2. 启动 runtime + 写 settings.json statusLine
+#    必须在普通 shell 里跑，不要在已开的 agy 会话里跑
+#    （agy 退出时会用内存里的 settings 覆写磁盘，可能盖掉这次改动）
+bash <(curl -fsSL https://raw.githubusercontent.com/icebear0828/agy-hud/main/scripts/bootstrap.sh)
 ```
 
-然后打开 `agy`，让它运行已导入的 setup skill：
+bootstrap **幂等**——任何时候重跑都能修 `statusLine.command` 路径漂移。
 
-```text
-Use the agy-hud setup skill to configure AGY-HUD.
-```
+完成后新开一个 `agy` 会话，终端底部应该看到 HUD。
 
-setup skill 会下载 runtime 到 `~/.gemini/antigravity-cli/agy-hud-runtime`，写入 `settings.statusLine`，并尝试预热 Quota cache。完成后重开一个新的 `agy` 会话，终端输出应包含 `AGY-HUD`。
+### 为什么要两步？
 
-验收标准是：`agy plugin install` 成功导入 skill，setup skill 成功写入 `settings.statusLine`，并且新 `agy` 会话能看到 `AGY-HUD`。不能把组件导入成功当成 HUD 安装成功。
+`agy plugin install` 只 stage **声明式** 内容（`plugin.json` + `skills/`），不执行 JavaScript；而 statusLine 配置在 `~/.gemini/antigravity-cli/settings.json` 里，跟 plugin 系统是**正交**的。bootstrap 负责把 HUD runtime 下载到 `~/.gemini/antigravity-cli/agy-hud-runtime/`，并把它注册成 statusLine 命令。
 
-> 当前状态：实测 `agy` 1.0.0/1.0.1 的远程插件安装会导入 skills/agents，特定 `hooks/hooks.json` 也会被 staging；`rules`、`commands`、`pi: "extensions/index.js"` 和 `pi.extensions` 不会被处理。这些组件不会自动执行 `extensions/index.js`，不会导入根 `settings.json`，也不会在首次启动前写入 `settings.statusLine`。因此本项目采用 setup skill 两步安装；不能把 `[ok]` 当作 HUD 安装成功。
-
-### 安装后手动确认
-
-1. 确认插件导入成功：
+### Fork / 镜像
 
 ```bash
-agy plugin list
+AGY_HUD_REPO_RAW=https://raw.githubusercontent.com/your-fork/agy-hud/main \
+  bash <(curl -fsSL "$AGY_HUD_REPO_RAW/scripts/bootstrap.sh")
 ```
 
-输出里应该有 `agy-hud`，并且 `components` 包含 `skills`。
+---
 
-2. 确认 setup 写入了状态栏配置：
+## 验证
 
-macOS / Linux:
+bootstrap 跑完后：
 
 ```bash
-cat ~/.gemini/antigravity-cli/settings.json
+# settings.statusLine 应该指向 runtime
+cat ~/.gemini/antigravity-cli/settings.json | grep statusLine -A2
+
+# 直接调 HUD 命令应该输出 AGY-HUD 横幅
+node ~/.gemini/antigravity-cli/agy-hud-runtime/runtime/bin/agy-hud.js
 ```
 
-Windows PowerShell:
+如果 quota 行显示 `Antigravity token expired`，刷新 `agy` 登录态即可，**不是** bootstrap 失败。
+
+Windows PowerShell：
 
 ```powershell
 Get-Content "$env:USERPROFILE\.gemini\antigravity-cli\settings.json"
+& "$env:USERPROFILE\.gemini\antigravity-cli\agy-hud-runtime\runtime\bin\agy-hud.cmd"
 ```
 
-其中应该包含 `statusLine.command`，并指向 `agy-hud-runtime`。
+---
 
-3. 直接运行 HUD 命令，确认命令本身可用：
-
-macOS / Linux:
+## 诊断
 
 ```bash
-node ~/.gemini/antigravity-cli/agy-hud-runtime/extensions/bin/agy-hud.js
+# 查看 token + quota cache 状态
+node scripts/diagnose-auth.js
+
+# 看 agy 自己的 statusLine runner 报错
+ls -t ~/.gemini/antigravity-cli/log/cli-*.log | head -1 | xargs tail -50 | grep statusline
 ```
 
-Windows PowerShell:
+最常见的故障：`statusline_runner.go: failure N/30` —— 表示 `settings.json` 的 `statusLine.command` 指向的路径不存在了。重跑 bootstrap 即可。
 
-```powershell
-& "$env:USERPROFILE\.gemini\antigravity-cli\agy-hud-runtime\extensions\bin\agy-hud.cmd"
-```
+---
 
-输出应该包含：
-
-```text
-AGY-HUD
-```
-
-如果当前 agy OAuth 凭据有效，输出还应该包含 Quota 行；如果凭据过期，会显示类似：
-
-```text
-Quota unavailable: Antigravity token expired
-```
-
-4. 打开一个新的、已登录的 `agy` 会话确认实际状态栏显示。
-
-未登录页不是稳定验收标准。`AGY-HUD` 命令本身不依赖登录，未登录时也能输出默认行；但 agy 的登录页 TUI 在 macOS 和 Windows 上会用不同方式重绘/清屏，Windows 上可能把 statusLine 输出盖掉或放到不可见区域。判断安装是否成功，以 `settings.statusLine`、直接运行 HUD 命令、以及已登录后的新会话显示为准。
-
-### 本地开发
+## 卸载
 
 ```bash
-git clone https://github.com/icebear0828/agy-hud.git
-cd agy-hud
-./setup.sh
+bash uninstall.sh        # macOS / Linux
+.\uninstall.ps1          # Windows PowerShell
 ```
 
-本地开发模式会把 `statusLine` 指向当前仓库。
+会做：
+1. 清掉 `settings.json` `statusLine`（保留 `.bak` 备份）
+2. 删 `~/.gemini/antigravity-cli/agy-hud-runtime/`
+3. 卸 plugin (`agy plugin uninstall agy-hud`)
+4. 清 tmp token 镜像 / quota cache
 
-## 🔍 诊断
+---
 
-本地检查 agy 路径和 OAuth token 解析结果：
+## 配置（可选）
 
-```bash
-npm run diagnose:auth
-```
-
-远端设备用同一个诊断 CLI，不需要 clone 项目，也不会打印 token 值：
-
-```bash
-npm run diagnose:auth:remote -- <ssh-target>
-```
-
-如果 Windows 只能看到默认 HUD 行但没有 Quota，先看直接运行 HUD 命令的提示。Windows 登录态通常在 Credential Manager；SSH 服务会话可能看不到桌面会话的 `gemini:antigravity` 凭据，只能读到过期的 `~/.gemini/oauth_creds.json`。这种情况下 `Antigravity token expired` 不等于桌面 agy 没登录；在桌面会话里重新打开 `agy`，HUD 会触发一次后台 Credential Manager 读取。如果 Credential Manager 里的 access token 仍有效，下一次渲染会复用短期 token/cache；如果 Credential Manager 里的 access token 也已过期，需要先让 agy 自己刷新登录态。
-
-Windows 上 Antigravity CLI 的主 OAuth 凭据存储在 Windows Credential Manager 的 `gemini:antigravity` / `LegacyGeneric:target=gemini:antigravity` 项里，里面包含 `access_token`、`refresh_token`（RT）和 access token 的 `expiry`。agy-hud 目前只读取 `access_token` 和 `expiry`，不会用 RT 换新的 access token。
-
-远端两步安装显示验证：
-
-```bash
-npm run verify:setup-display:remote -- <ssh-target> <zip-url> <setup-script-url> --setup-source-base=<source-base> --reset-hud
-```
-
-这个命令会先清理 agy-hud 自己的旧状态，执行 `agy plugin install <zip-url>`，再运行 setup runtime，最后打开真实 `agy` 会话观察 HUD。
-
-install-only 负向验证：
-
-```bash
-npm run verify:install-display:remote -- <ssh-target> <zip-url> --reset-hud
-```
-
-这个命令只会在安装前清理 agy-hud 自己的旧状态；安装后不会手动执行 hook、setup 或 statusLine 命令。它用于确认 install-only 当前仍不会自动显示 HUD。
-
-已经配置好的机器不能作为干净安装证据；如果需要保留现有配置，可用隔离的远端 `HOME` 跑同一套严格验证：
-
-```bash
-AGY_HUD_E2E_TARGET=a \
-AGY_HUD_E2E_REMOTE_ENV='HOME=/tmp/agy-hud-clean' \
-AGY_HUD_E2E_AGY_BIN='/Users/yutao/.local/bin/agy' \
-npm run e2e
-```
-
-## ⚙️ 配置
-
-在运行 agy 的项目目录创建 `agy-hud.config.json` 可覆盖默认配置；未提供项目配置时，HUD 使用 runtime 内的默认配置 `extensions/agy-hud.config.json`：
+在工作目录创建 `agy-hud.config.json` 可覆盖默认。不创建就用下载下来的 `runtime/agy-hud.config.json`：
 
 ```json
 {
-  "theme": { "primary": "green", "warning": "yellow", "critical": "red" },
-  "display": { "useNerdFonts": false, "unicode": true, "columnWidth": 37 },
-  "thresholds": { "warning": 0.7, "critical": 0.9 }
+  "display": {
+    "unicode": true,
+    "nerdFont": false,
+    "columnWidth": 35
+  },
+  "thresholds": {
+    "warning": 30,
+    "critical": 10
+  },
+  "theme": {
+    "warning": "yellow",
+    "critical": "red"
+  }
 }
 ```
 
-完整配置说明见 [README.md](./README.md)。
+---
 
-## 📜 License
+## 目录结构
+
+```
+agy-hud/
+├── plugin.json           # {"name":"agy-hud"} — agy plugin marker
+├── skills/setup/         # SKILL.md — agent 看到的 setup 手册
+├── runtime/              # bootstrap 下载到 ~/.gemini/.../agy-hud-runtime/runtime/
+│   ├── bin/agy-hud.js    # statusLine 入口（stdin JSON → ANSI HUD）
+│   ├── quota.js          # fetchAvailableModels 客户端（与 /usage 对账）
+│   ├── statusline-installer.js
+│   ├── uninstall.js
+│   └── ...
+├── scripts/
+│   ├── bootstrap.sh      # 一行安装入口
+│   ├── bootstrap.js      # 实际下载 + 配置逻辑
+│   ├── verify-display.js # E2E：install + bootstrap + observe agy
+│   └── diagnose-auth.js
+├── tests/unit/           # node --test
+└── release.sh
+```
+
+---
+
+## 跨平台
+
+**Windows token 刷新**：Antigravity CLI 把 OAuth `refresh_token` + `access_token` 存在 Credential Manager（`gemini:antigravity` / `LegacyGeneric:target=gemini:antigravity`）。HUD 优先用 tmp 里的 `agy-hud-token.json` 短期镜像。fast path 只看到缺失/过期文件 token 时，会触发 detached 后台读取，下一次渲染用刷过的 token。agy-hud **不会** 用 RT 换 access token——如果 Credential Manager 里的 access token 也过期，需要先刷 agy 登录态。
+
+**文件 token 回退路径**（按顺序搜索）：
+- `~/.gemini/antigravity-cli/antigravity-oauth-token`
+- `$XDG_DATA_HOME/antigravity-cli/antigravity-oauth-token`
+- `$APPDATA/antigravity-cli/antigravity-oauth-token`
+- `$LOCALAPPDATA/antigravity-cli/antigravity-oauth-token`
+
+---
+
+## License
 
 MIT

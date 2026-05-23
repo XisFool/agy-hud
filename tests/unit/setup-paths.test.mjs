@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import statuslineModule from '../../extensions/statusline.js';
+import statuslineModule from '../../runtime/statusline-installer.js';
 
 const {
   createStatusLineCommand,
@@ -19,33 +19,31 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const projectRoot = path.resolve(__dirname, '..', '..');
 
-test('setup.sh runs install-statusline.js', () => {
-  const setupScript = fs.readFileSync(path.join(projectRoot, 'setup.sh'), 'utf8');
+test('bootstrap.sh invokes bootstrap.js via curl + node', () => {
+  const bootstrap = fs.readFileSync(path.join(projectRoot, 'scripts', 'bootstrap.sh'), 'utf8');
 
-  assert.match(setupScript, /extensions\/install-statusline\.js/);
+  assert.match(bootstrap, /bootstrap\.js/);
+  assert.match(bootstrap, /curl/);
+  assert.match(bootstrap, /exec node/);
 });
 
-test('setup.ps1 runs install-statusline.js', () => {
-  const setupScript = fs.readFileSync(path.join(projectRoot, 'setup.ps1'), 'utf8');
-
-  assert.match(setupScript, /extensions\/install-statusline\.js/);
-});
-
-test('install-statusline.js requires statusline.js and configures statusLine', () => {
-  const installScript = fs.readFileSync(path.join(projectRoot, 'extensions', 'install-statusline.js'), 'utf8');
-  assert.match(installScript, /configureStatusLine\(__dirname\)/);
+test('bootstrap.js downloads runtime/* files and invokes configureStatusLine', () => {
+  const bootstrap = fs.readFileSync(path.join(projectRoot, 'scripts', 'bootstrap.js'), 'utf8');
+  assert.match(bootstrap, /runtime\/bin\/agy-hud\.js/);
+  assert.match(bootstrap, /statusline-installer\.js/);
+  assert.match(bootstrap, /configureStatusLine/);
 });
 
 test('Windows statusLine command points at the .cmd shim, not raw node invocation', () => {
   const command = createStatusLineCommand(
-    'C:\\Users\\testuser\\.gemini\\antigravity-cli\\agy-hud-runtime\\extensions\\bin\\agy-hud.js',
+    'C:\\Users\\testuser\\.gemini\\antigravity-cli\\agy-hud-runtime\\runtime\\bin\\agy-hud.js',
     'C:\\Program Files\\nodejs\\node.exe',
     'win32'
   );
 
   assert.equal(
     command,
-    '"C:\\Users\\testuser\\.gemini\\antigravity-cli\\agy-hud-runtime\\extensions\\bin\\agy-hud.cmd"'
+    '"C:\\Users\\testuser\\.gemini\\antigravity-cli\\agy-hud-runtime\\runtime\\bin\\agy-hud.cmd"'
   );
   // The shim path replaces .js with .cmd — no inline node invocation.
   assert.doesNotMatch(command, /^node /);
@@ -54,15 +52,15 @@ test('Windows statusLine command points at the .cmd shim, not raw node invocatio
 
 test('Unix statusLine command uses absolute process.execPath', () => {
   const command = createStatusLineCommand(
-    '/Users/me/.gemini/antigravity-cli/agy-hud-runtime/extensions/bin/agy-hud.js',
+    '/Users/me/.gemini/antigravity-cli/agy-hud-runtime/runtime/bin/agy-hud.js',
     '/usr/local/bin/node',
     'darwin'
   );
-  assert.equal(command, '"/usr/local/bin/node" "/Users/me/.gemini/antigravity-cli/agy-hud-runtime/extensions/bin/agy-hud.js"');
+  assert.equal(command, '"/usr/local/bin/node" "/Users/me/.gemini/antigravity-cli/agy-hud-runtime/runtime/bin/agy-hud.js"');
 });
 
 test('buildCmdShimContents includes node-on-PATH first then Program Files fallback', () => {
-  const body = buildCmdShimContents('C:\\runtime\\extensions\\bin\\agy-hud.js');
+  const body = buildCmdShimContents('C:\\runtime\\bin\\agy-hud.js');
   assert.match(body, /^@echo off/);
   assert.match(body, /node "%~dp0agy-hud\.js"/);
   assert.match(body, /%ProgramFiles%\\nodejs\\node\.exe/);

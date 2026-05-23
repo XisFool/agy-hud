@@ -149,8 +149,8 @@ function createStatusLineCommand(hudScriptPath, nodePath = process.execPath || '
   return `"${nodePath}" "${hudScriptPath}"`;
 }
 
-function configureStatusLine(baseDir = __dirname) {
-  const settingsPath = getSettingsPath();
+function configureStatusLine(baseDir = __dirname, options = {}) {
+  const settingsPath = options.settingsPath || getSettingsPath();
   const hudScriptPath = path.resolve(baseDir, 'bin', 'agy-hud.js');
 
   // Generate the Windows .cmd shim alongside the HUD script (no-op on Unix).

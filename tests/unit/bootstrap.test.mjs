@@ -12,10 +12,10 @@ const __dirname = path.dirname(__filename);
 const projectRoot = path.resolve(__dirname, '..', '..');
 const require = createRequire(import.meta.url);
 
-test('setup-runtime installs runtime files and writes statusLine from a source directory', () => {
+test('bootstrap installs runtime files and writes statusLine from a source directory', () => {
   const home = fs.mkdtempSync(path.join(os.tmpdir(), 'agy-hud-setup-home-'));
   try {
-    const result = spawnSync(process.execPath, ['scripts/setup-runtime.js'], {
+    const result = spawnSync(process.execPath, ['scripts/bootstrap.js'], {
       cwd: projectRoot,
       env: {
         ...process.env,
@@ -33,26 +33,32 @@ test('setup-runtime installs runtime files and writes statusLine from a source d
     const settings = JSON.parse(fs.readFileSync(settingsPath, 'utf8'));
 
     assert.ok(fs.existsSync(path.join(runtime, 'package.json')));
-    assert.ok(fs.existsSync(path.join(runtime, 'extensions', 'bin', 'agy-hud.js')));
-    assert.ok(fs.existsSync(path.join(runtime, 'extensions', 'statusline.js')));
+    assert.ok(fs.existsSync(path.join(runtime, 'runtime', 'bin', 'agy-hud.js')));
+    assert.ok(fs.existsSync(path.join(runtime, 'runtime', 'statusline-installer.js')));
     assert.equal(settings.statusLine.type, 'command');
     assert.match(settings.statusLine.command, /agy-hud-runtime/);
-    assert.match(settings.statusLine.command, /extensions[/\\]bin[/\\]agy-hud\.js/);
-    assert.match(result.stdout, /AGY-HUD setup complete/);
+    assert.match(settings.statusLine.command, /runtime[/\\]bin[/\\]agy-hud\.js/);
+    assert.match(result.stdout, /AGY-HUD bootstrap complete/);
+    // Regression: command must point inside the isolated tmp HOME, not the real
+    // user's antigravity-cli (configureStatusLine used to ignore homeDir).
+    assert.ok(
+      settings.statusLine.command.includes(home),
+      `statusLine leaked outside tmp HOME: ${settings.statusLine.command}`
+    );
   } finally {
     fs.rmSync(home, { recursive: true, force: true });
   }
 });
 
-test('setup-runtime does not require git clone as its runtime source', () => {
-  const script = fs.readFileSync(path.join(projectRoot, 'scripts', 'setup-runtime.js'), 'utf8');
+test('bootstrap does not require git clone as its runtime source', () => {
+  const script = fs.readFileSync(path.join(projectRoot, 'scripts', 'bootstrap.js'), 'utf8');
 
   assert.match(script, /RUNTIME_FILES/);
   assert.match(script, /AGY_HUD_SETUP_SOURCE_BASE/);
   assert.doesNotMatch(script, /git clone/);
 });
 
-test('setup-runtime refreshes quota cache during setup when a token is available', async () => {
+test('bootstrap refreshes quota cache during setup when a token is available', async () => {
   const home = fs.mkdtempSync(path.join(os.tmpdir(), 'agy-hud-setup-quota-home-'));
   const cachePath = path.join(os.tmpdir(), 'agy-hud-quota-cache.json');
   const previousCache = fs.existsSync(cachePath) ? fs.readFileSync(cachePath, 'utf8') : null;
@@ -84,7 +90,7 @@ test('setup-runtime refreshes quota cache during setup when a token is available
       }),
     });
 
-    const { installRuntime } = require(path.join(projectRoot, 'scripts', 'setup-runtime.js'));
+    const { installRuntime } = require(path.join(projectRoot, 'scripts', 'bootstrap.js'));
     const result = await installRuntime({
       homeDir: home,
       sourceDir: projectRoot,
@@ -100,7 +106,7 @@ test('setup-runtime refreshes quota cache during setup when a token is available
 
     assert.deepEqual(result.quotaRefresh, { status: 'refreshed', count: 1 });
 
-    const quotaModule = require(path.join(result.runtimeDir, 'extensions', 'quota.js'));
+    const quotaModule = require(path.join(result.runtimeDir, 'runtime', 'quota.js'));
     const cached = quotaModule.readCache({
       accessToken: 'rotated-setup-token',
       sourcePath: tokenPath,
@@ -117,7 +123,7 @@ test('setup-runtime refreshes quota cache during setup when a token is available
   }
 });
 
-test('setup-runtime skips quota refresh when the available token is expired', async () => {
+test('bootstrap skips quota refresh when the available token is expired', async () => {
   const home = fs.mkdtempSync(path.join(os.tmpdir(), 'agy-hud-setup-expired-home-'));
   const previousFetch = globalThis.fetch;
   try {
@@ -136,7 +142,7 @@ test('setup-runtime skips quota refresh when the available token is expired', as
       return { ok: false, status: 401, json: async () => ({}) };
     };
 
-    const { installRuntime } = require(path.join(projectRoot, 'scripts', 'setup-runtime.js'));
+    const { installRuntime } = require(path.join(projectRoot, 'scripts', 'bootstrap.js'));
     const result = await installRuntime({
       homeDir: home,
       sourceDir: projectRoot,

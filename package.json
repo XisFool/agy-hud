@@ -1,13 +1,10 @@
 {
   "name": "agy-hud",
-  "version": "0.1.12",
+  "version": "0.2.0",
   "description": "Premium HUD for Antigravity CLI",
-  "main": "extensions/index.js",
-  "pi": {
-    "skills": ["skills/*/SKILL.md"]
-  },
+  "main": "runtime/bin/agy-hud.js",
   "files": [
-    "extensions",
+    "runtime",
     "scripts",
     "skills",
     "plugin.json",
@@ -24,13 +21,9 @@
   },
   "scripts": {
     "test": "node --test tests/unit/*.test.mjs",
-    "e2e": "node scripts/run-e2e.js",
-    "diagnose:auth": "node scripts/diagnose-auth.js",
-    "diagnose:auth:remote": "node scripts/diagnose-auth-remote.js",
-    "setup:runtime": "node scripts/setup-runtime.js",
-    "verify:install-display": "node scripts/verify-install-display.js",
-    "verify:install-display:remote": "node scripts/verify-install-display-remote.js",
-    "verify:setup-display:remote": "node scripts/verify-setup-display-remote.js",
+    "bootstrap": "node scripts/bootstrap.js",
+    "verify": "node scripts/verify-display.js",
+    "diagnose": "node scripts/diagnose-auth.js",
     "serve:release": "node scripts/serve-release.js",
     "serve:source": "node scripts/serve-source.js"
   },

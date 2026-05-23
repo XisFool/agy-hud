@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { detectUnicodeSupport } from '../../extensions/encoding.js';
+import { detectUnicodeSupport } from '../../runtime/encoding.js';
 
 function fakeEnv(overrides) {
   const env = { ...process.env, ...overrides };

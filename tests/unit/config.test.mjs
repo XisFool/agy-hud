@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { loadConfig } from '../../extensions/config.js';
+import { loadConfig } from '../../runtime/config.js';
 
 function withCwd(cwd, fn) {
   const previous = process.cwd();

@@ -5,12 +5,12 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const { execFileSync } = require('child_process');
-const { getAntigravityRoots } = require('../extensions/paths.js');
+const { getAntigravityRoots } = require('../runtime/paths.js');
 const {
   getTokenCandidates,
   parseTokenPayload,
   readToken,
-} = require('../extensions/quota.js');
+} = require('../runtime/quota.js');
 
 function compactObject(value) {
   return Object.fromEntries(

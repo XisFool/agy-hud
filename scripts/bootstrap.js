@@ -11,16 +11,16 @@ const DEFAULT_SOURCE_BASE = 'https://raw.githubusercontent.com/icebear0828/agy-h
 
 const RUNTIME_FILES = [
   'package.json',
-  'extensions/agy-hud.config.json',
-  'extensions/bin/agy-hud.js',
-  'extensions/config.js',
-  'extensions/encoding.js',
-  'extensions/install-statusline.js',
-  'extensions/parser.js',
-  'extensions/paths.js',
-  'extensions/quota.js',
-  'extensions/renderer.js',
-  'extensions/statusline.js',
+  'runtime/agy-hud.config.json',
+  'runtime/bin/agy-hud.js',
+  'runtime/config.js',
+  'runtime/encoding.js',
+  'runtime/parser.js',
+  'runtime/paths.js',
+  'runtime/quota.js',
+  'runtime/renderer.js',
+  'runtime/statusline-installer.js',
+  'runtime/uninstall.js',
 ];
 
 function getAntigravityRoots(env = process.env, homeDir = os.homedir()) {
@@ -88,7 +88,7 @@ async function installRuntime(options = {}) {
   const env = options.env || process.env;
   const homeDir = options.homeDir || os.homedir();
   const sourceDir = options.sourceDir || env.AGY_HUD_SETUP_SOURCE_DIR || '';
-  const sourceBase = options.sourceBase || env.AGY_HUD_SETUP_SOURCE_BASE || DEFAULT_SOURCE_BASE;
+  const sourceBase = options.sourceBase || env.AGY_HUD_REPO_RAW || env.AGY_HUD_SETUP_SOURCE_BASE || DEFAULT_SOURCE_BASE;
   const antigravityRoot = options.antigravityRoot || pickAntigravityRoot(env, homeDir);
   const runtimeDir = path.join(antigravityRoot, 'agy-hud-runtime');
 
@@ -101,10 +101,12 @@ async function installRuntime(options = {}) {
     fs.writeFileSync(target, body);
   }
 
-  const statuslinePath = path.join(runtimeDir, 'extensions', 'statusline.js');
-  delete require.cache[require.resolve(statuslinePath)];
-  const { configureStatusLine } = require(statuslinePath);
-  const result = configureStatusLine(path.join(runtimeDir, 'extensions'));
+  const installerPath = path.join(runtimeDir, 'runtime', 'statusline-installer.js');
+  delete require.cache[require.resolve(installerPath)];
+  const { configureStatusLine } = require(installerPath);
+  const result = configureStatusLine(path.join(runtimeDir, 'runtime'), {
+    settingsPath: path.join(antigravityRoot, 'settings.json'),
+  });
   const quotaRefresh = await refreshQuotaCache(runtimeDir, { env, homeDir });
 
   return {
@@ -119,7 +121,7 @@ async function installRuntime(options = {}) {
 
 async function refreshQuotaCache(runtimeDir, options = {}) {
   try {
-    const quotaPath = path.join(runtimeDir, 'extensions', 'quota.js');
+    const quotaPath = path.join(runtimeDir, 'runtime', 'quota.js');
     delete require.cache[require.resolve(quotaPath)];
     const { readToken, fetchQuotaFromCloud, writeCache, isTokenExpired } = require(quotaPath);
     const roots = getAntigravityRoots(options.env || process.env, options.homeDir || os.homedir());
@@ -145,7 +147,7 @@ async function refreshQuotaCache(runtimeDir, options = {}) {
 if (require.main === module) {
   installRuntime()
     .then(result => {
-      process.stdout.write(`AGY-HUD setup complete\n`);
+      process.stdout.write(`AGY-HUD bootstrap complete\n`);
       process.stdout.write(`runtime: ${result.runtimeDir}\n`);
       process.stdout.write(`settings: ${result.settingsPath}\n`);
       process.stdout.write(`statusLine: ${result.command}\n`);

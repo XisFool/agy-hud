@@ -12,7 +12,7 @@ const projectRoot = path.resolve(__dirname, '..', '..');
 
 function runHudWithEmptyStdin(envOverrides) {
   return new Promise((resolve, reject) => {
-    const child = spawn(process.execPath, [path.join(projectRoot, 'extensions', 'bin', 'agy-hud.js')], {
+    const child = spawn(process.execPath, [path.join(projectRoot, 'runtime', 'bin', 'agy-hud.js')], {
       cwd: projectRoot,
       env: {
         ...process.env,

@@ -5,7 +5,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { getSessionState } from '../../extensions/parser.js';
+import { getSessionState } from '../../runtime/parser.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -42,7 +42,7 @@ test('getSessionState reads the highest transcript step index', async () => {
 test('getSessionState falls back outside git repositories without stderr noise', () => {
   const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'agy-hud-parser-non-git-'));
   const script = `
-    const { getSessionState } = require(${JSON.stringify(path.join(projectRoot, 'extensions', 'parser.js'))});
+    const { getSessionState } = require(${JSON.stringify(path.join(projectRoot, 'runtime', 'parser.js'))});
     getSessionState('missing-transcript.jsonl')
       .then(state => process.stdout.write(JSON.stringify(state)));
   `;

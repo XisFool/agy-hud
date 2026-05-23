@@ -167,17 +167,14 @@ function readInstallState(env) {
   const pluginDir = path.join(base, 'plugins', 'agy-hud');
   const runtimeDir = path.join(base, 'agy-hud-runtime');
   let settings = null;
-  let hooks = null;
   try { settings = JSON.parse(fs.readFileSync(settingsPath, 'utf8')); } catch { /* missing */ }
-  try { hooks = JSON.parse(fs.readFileSync(path.join(pluginDir, 'hooks.json'), 'utf8')); } catch { /* missing */ }
   return {
     base,
     settingsExists: fs.existsSync(settingsPath),
     statusLine: settings && settings.statusLine ? settings.statusLine : null,
     pluginExists: fs.existsSync(pluginDir),
-    hooksEvents: hooks ? Object.fromEntries(Object.entries(hooks).map(([name, value]) => [name, Object.keys(value)])) : null,
     runtimeExists: fs.existsSync(runtimeDir),
-    runtimeHudExists: fs.existsSync(path.join(runtimeDir, 'extensions', 'bin', 'agy-hud.js')),
+    runtimeHudExists: fs.existsSync(path.join(runtimeDir, 'runtime', 'bin', 'agy-hud.js')),
   };
 }
 
@@ -239,6 +236,20 @@ function observeLocalAgy(env) {
     }
 
     const afterInstall = readInstallState(env);
+
+    // Two-step install: plugin install does not run JS. Bootstrap explicitly.
+    const bootstrap = run(process.execPath, [path.join(projectRoot, 'scripts', 'bootstrap.js')], {
+      env: { ...env, AGY_HUD_SETUP_SOURCE_DIR: projectRoot },
+      timeout: 60_000,
+    });
+    if (bootstrap.status !== 0) {
+      fail('agy-hud bootstrap failed', {
+        status: bootstrap.status,
+        stdout: bootstrap.stdout,
+        stderr: bootstrap.stderr,
+      });
+    }
+
     const observation = await observeLocalAgy(env);
     const observedRaw = `${observation.stdout || ''}\n${observation.stderr || ''}`;
     const observedPlain = stripAnsi(observedRaw);
@@ -255,8 +266,10 @@ function observeLocalAgy(env) {
       homeMode: currentHome ? 'current-home' : 'isolated-home',
       install: {
         status: install.status,
-        processedHooks: /hooks\s+:\s+\d+ processed/.test(stripAnsi(`${install.stdout}\n${install.stderr}`)),
         processedSkills: /skills\s+:\s+\d+ processed/.test(stripAnsi(`${install.stdout}\n${install.stderr}`)),
+      },
+      bootstrap: {
+        status: bootstrap.status,
       },
       afterInstall,
       observe: {

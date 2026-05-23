@@ -6,7 +6,7 @@ import path from 'node:path';
 import {
   getAntigravityRoots,
   resolveAntigravityPath,
-} from '../../extensions/paths.js';
+} from '../../runtime/paths.js';
 
 function withEnv(overrides, fn) {
   const snapshot = {};
