@@ -276,16 +276,35 @@ function observeLocalAgy(env) {
 }
 
 (async () => {
-  execFileSync('bash', ['release.sh', '--local'], {
-    cwd: projectRoot,
-    stdio: process.env.AGY_HUD_VERIFY_VERBOSE ? 'inherit' : 'ignore',
-  });
+  // Skip the zip build when caller already did it (e.g. release.sh's E2E
+  // gate). Without this, release.sh → verify-display.js → release.sh =
+  // infinite recursion.
+  if (!process.env.AGY_HUD_SKIP_BUILD) {
+    execFileSync('bash', ['release.sh', '--local'], {
+      cwd: projectRoot,
+      stdio: process.env.AGY_HUD_VERIFY_VERBOSE ? 'inherit' : 'ignore',
+    });
+  }
 
   const tmpRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'agy-hud-verify-'));
   const env = buildEnv(tmpRoot);
   const { server, url } = await startZipServer();
   try {
     const install = await run(agyBin, ['plugin', 'install', url], { env, timeout: 120_000 });
+
+    // Upgrade-from-old-version scenario: plant a fake stale hooks.json in the
+    // staged plugin dir BEFORE bootstrap. v0.1.x left this behind in real
+    // user installs, fired a base64 blob hook every model step, and clobbered
+    // settings.json statusLine. Bootstrap must clean it.
+    const stagedPluginDir = path.join(env.HOME, '.gemini', 'antigravity-cli', 'plugins', 'agy-hud');
+    const planted = path.join(stagedPluginDir, 'hooks.json');
+    if (fs.existsSync(stagedPluginDir)) {
+      fs.writeFileSync(planted, JSON.stringify({
+        post_invocation_hooks: [{ command: 'echo simulated-stale-hook-from-v0.1.x' }]
+      }));
+    }
+    const stalePresentBeforeBootstrap = fs.existsSync(planted);
+    const noAuthMode = process.env.AGY_HUD_E2E_NO_AUTH_OBSERVE === '1';
     if (install.status !== 0 || !/\[ok\]/.test(install.stdout || '')) {
       fail('agy plugin install failed', {
         status: install.status,
@@ -311,7 +330,28 @@ function observeLocalAgy(env) {
       });
     }
 
-    const observation = await observeLocalAgy(env);
+    // No-auth mode (CI): skip the agy-session PTY spawn (needs OAuth) and
+    // directly invoke the configured statusLine command, asserting AGY-HUD
+    // banner. Catches install/bootstrap/runtime issues — the auth-required
+    // "HUD visible inside live agy session" check stays in dev / release.sh.
+    let observation;
+    if (noAuthMode) {
+      const stateNow = readInstallState(env);
+      const cmd = stateNow.statusLine && stateNow.statusLine.command;
+      if (!cmd) {
+        observation = { stdout: '', stderr: 'no statusLine.command in settings.json', mode: 'no-auth-direct', status: 1 };
+      } else {
+        const direct = await run('bash', ['-c', `echo '' | ${cmd}`], { env, timeout: 10_000 });
+        observation = {
+          stdout: direct.stdout,
+          stderr: direct.stderr,
+          mode: 'no-auth-direct',
+          status: direct.status,
+        };
+      }
+    } else {
+      observation = await observeLocalAgy(env);
+    }
     const observedRaw = `${observation.stdout || ''}\n${observation.stderr || ''}`;
     const observedPlain = stripAnsi(observedRaw);
     const observedScreen = renderTerminalScreen(observedRaw);
@@ -325,7 +365,16 @@ function observeLocalAgy(env) {
     const streamHudPresent = hudInRaw || /AGY-HUD/.test(observedPlain);
     const statusLineReady = Boolean(afterObserve.statusLine && /agy-hud/i.test(String(afterObserve.statusLine.command || '')));
     const runtimeReady = Boolean(afterObserve.runtimeHudExists);
-    const displayReady = hudVisible && statusLineReady && runtimeReady;
+    const staleCleaned = stalePresentBeforeBootstrap && !fs.existsSync(planted);
+    const displayReady = hudVisible && statusLineReady && runtimeReady && staleCleaned;
+
+    // Dump raw PTY bytes as artifact so CI can upload and reviewers can
+    // `cat` the file in their own terminal and see the colored HUD render.
+    const artifactDir = process.env.AGY_HUD_E2E_ARTIFACT_DIR || os.tmpdir();
+    const artifactPath = path.join(artifactDir, `agy-hud-pty-${Date.now()}.log`);
+    try {
+      fs.writeFileSync(artifactPath, observedRaw);
+    } catch { /* artifact best-effort */ }
 
     const report = {
       ok: displayReady,
@@ -348,6 +397,9 @@ function observeLocalAgy(env) {
         statusLineReady,
         runtimeReady,
         displayReady,
+        staleCleaned,
+        stalePresentBeforeBootstrap,
+        artifactPath,
         outputPreview: observedScreen.split(/\r?\n/).slice(0, 24),
         streamPreview: observedPlain.split(/\r?\n/).slice(0, 24),
         error: observation.error,

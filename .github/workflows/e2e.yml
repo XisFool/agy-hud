@@ -1,0 +1,205 @@
+name: E2E
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+  workflow_dispatch:
+
+# E2E gate: install agy CLI, install agy-hud, bootstrap, assert HUD command
+# renders AGY-HUD banner. Cross-platform (macOS / Windows / Linux). No OAuth
+# required — we only verify the install/bootstrap plumbing + the standalone
+# HUD command. The auth-required "AGY-HUD visible inside live agy session"
+# check stays in dev / release.sh on a machine with a real signed-in token.
+
+jobs:
+  unit-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - run: npm install
+      - run: npm test
+
+  e2e:
+    name: e2e (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    needs: unit-tests
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      # Install agy CLI per official docs.
+      - name: Install agy CLI (Unix)
+        if: runner.os != 'Windows'
+        run: |
+          curl -fsSL https://antigravity.google/cli/install.sh | bash
+          echo "$HOME/.local/bin" >> $GITHUB_PATH
+
+      - name: Install agy CLI (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          irm https://antigravity.google/cli/install.ps1 | iex
+          # agy install.ps1 doesn't always update GITHUB_PATH. Discover where
+          # it actually landed and add that dir.
+          $candidates = @(
+            "$env:USERPROFILE\.local\bin",
+            "$env:LOCALAPPDATA\agy\bin",
+            "$env:LOCALAPPDATA\Programs\agy\bin"
+          )
+          $found = $false
+          foreach ($c in $candidates) {
+            if (Test-Path "$c\agy.exe") {
+              Add-Content -Path $env:GITHUB_PATH -Value $c
+              Write-Host "agy.exe at: $c"
+              $found = $true
+            }
+          }
+          if (-not $found) {
+            Write-Host "candidates empty; searching..."
+            Get-ChildItem -Path $env:USERPROFILE,$env:LOCALAPPDATA -Filter agy.exe -Recurse -ErrorAction SilentlyContinue | ForEach-Object {
+              Write-Host "agy.exe at: $($_.DirectoryName)"
+              Add-Content -Path $env:GITHUB_PATH -Value $_.DirectoryName
+            }
+          }
+
+      - name: Verify agy installed (Unix)
+        if: runner.os != 'Windows'
+        run: agy --help | head -5
+        shell: bash
+
+      - name: Verify agy installed (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: agy --help | Select-Object -First 5
+
+      # Build the zip per-OS. Git Bash on Windows has no `zip`; use Compress-Archive.
+      - name: Build zip (Unix)
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          mkdir -p release_tmp
+          cp plugin.json gemini-extension.json package.json README.md README_zh.md release_tmp/
+          cp -r runtime release_tmp/
+          cp -r scripts release_tmp/
+          cp -r skills release_tmp/
+          (cd release_tmp && zip -qr ../agy-hud.zip .)
+          rm -rf release_tmp
+
+      - name: Build zip (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force release_tmp | Out-Null
+          Copy-Item plugin.json,gemini-extension.json,package.json,README.md,README_zh.md release_tmp\
+          Copy-Item -Recurse runtime,scripts,skills release_tmp\
+          if (Test-Path agy-hud.zip) { Remove-Item agy-hud.zip -Force }
+          Compress-Archive -Path release_tmp\* -DestinationPath agy-hud.zip
+          Remove-Item -Recurse -Force release_tmp
+
+      # Run verify-display in no-auth mode (CI doesn't have OAuth).
+      # Use a repo-relative path for the report file: ${{ runner.temp }}
+      # contains backslashes on Windows that get eaten by bash heredoc → node -e.
+      - name: Run E2E (no-auth)
+        env:
+          AGY_HUD_E2E_NO_AUTH_OBSERVE: '1'
+          AGY_HUD_E2E_ARTIFACT_DIR: ${{ runner.temp }}
+          AGY_HUD_SKIP_BUILD: '1'
+        shell: bash
+        run: |
+          set +e
+          node scripts/verify-display.js > e2e-report.json 2>&1
+          E2E_RC=$?
+          set -e
+          cat e2e-report.json
+          OK=$(node -e "try { console.log(require('./e2e-report.json').ok || false) } catch (e) { console.log('parse_error: ' + e.message) }")
+          echo "report.ok = $OK"
+          if [ "$E2E_RC" != "0" ] || [ "$OK" != "true" ]; then
+            echo "::error::E2E failed on ${{ matrix.os }} (exit=$E2E_RC ok=$OK)"
+            exit 1
+          fi
+
+      - name: Upload PTY artifact + report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-${{ matrix.os }}
+          path: |
+            e2e-report.json
+            ${{ runner.temp }}/agy-hud-pty-*.log
+          if-no-files-found: warn
+          retention-days: 14
+
+      # Render a screenshot of the HUD output. Uses charm.sh `vhs` which
+      # records a tape file → PNG/GIF, so reviewers see an actual image
+      # of the HUD instead of having to cat an ANSI dump.
+      - name: Install vhs (macOS)
+        if: runner.os == 'macOS'
+        run: brew install vhs
+
+      - name: Install vhs (Linux)
+        if: runner.os == 'Linux'
+        continue-on-error: true
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg ttyd
+          # Discover the actual asset name from latest release rather than guessing
+          ASSET_URL=$(curl -fsSL https://api.github.com/repos/charmbracelet/vhs/releases/latest \
+            | grep -oE 'https://[^"]*vhs[^"]*[Ll]inux[^"]*x86_64\.tar\.gz' | head -1)
+          if [ -z "$ASSET_URL" ]; then
+            ASSET_URL=$(curl -fsSL https://api.github.com/repos/charmbracelet/vhs/releases/latest \
+              | grep -oE 'https://[^"]*vhs[^"]*[Ll]inux[^"]*amd64\.tar\.gz' | head -1)
+          fi
+          if [ -z "$ASSET_URL" ]; then
+            echo "could not find vhs Linux asset; skipping screenshot render"
+            exit 0
+          fi
+          echo "vhs asset: $ASSET_URL"
+          curl -fsSL "$ASSET_URL" -o /tmp/vhs.tar.gz
+          tar -xzf /tmp/vhs.tar.gz -C /tmp/
+          VHS_BIN=$(find /tmp -name vhs -type f -executable | head -1)
+          sudo mv "$VHS_BIN" /usr/local/bin/vhs
+          vhs --version
+
+      - name: Render HUD screenshot (Unix)
+        if: runner.os != 'Windows'
+        shell: bash
+        continue-on-error: true
+        run: |
+          HUD_JS="$HOME/.gemini/antigravity-cli/agy-hud-runtime/runtime/bin/agy-hud.js"
+          if [ ! -f "$HUD_JS" ]; then
+            echo "runtime not present, skipping screenshot"
+            exit 0
+          fi
+          cat > /tmp/hud.tape <<TAPE
+          Output /tmp/hud-${{ matrix.os }}.png
+          Set FontSize 14
+          Set Width 1400
+          Set Height 200
+          Set Theme "Dracula"
+          Hide
+          Type "node $HUD_JS < /dev/null"
+          Enter
+          Show
+          Sleep 2s
+          TAPE
+          vhs /tmp/hud.tape || echo "vhs render failed (non-fatal)"
+          ls -la /tmp/hud-*.png || echo "no PNG produced"
+
+      - name: Upload HUD screenshot
+        if: runner.os != 'Windows'
+        uses: actions/upload-artifact@v4
+        with:
+          name: hud-screenshot-${{ matrix.os }}
+          path: /tmp/hud-*.png
+          if-no-files-found: warn
+          retention-days: 14
