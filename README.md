@@ -193,9 +193,12 @@ Every push to `main` runs [.github/workflows/e2e.yml](./.github/workflows/e2e.ym
 | macos-latest  | ✅ | ✅ | ✅ |
 | windows-latest | ✅ | ✅ | ✅ |
 
-Each run uploads two artifacts (14-day retention):
-- `e2e-<os>/e2e-report.json` — full diagnostic (`ok`, `hudVisible`, `staleCleaned`, etc)
-- `e2e-<os>/agy-hud-pty-*.log` — raw PTY bytes with ANSI colors. `cat` it in your terminal to see the HUD render.
+Each run uploads (14-day retention):
+
+| Artifact | Per-OS | Contents |
+|---|---|---|
+| `e2e-<os>` | all 3 | `e2e-report.json` (diagnostic: `ok`, `hudVisible`, `staleCleaned`, …) + `agy-hud-pty-*.log` (raw ANSI bytes — `cat` to see the HUD render with colors) |
+| `hud-screenshot-<os>` | ubuntu + macos | `hud-ascii-<os>.png` + `hud-unicode-<os>.png` rendered via [charm.sh `freeze`](https://github.com/charmbracelet/freeze). PNG visual evidence — download and open. |
 
 CI runs in **no-auth mode**: it asserts the standalone HUD command renders the banner. The full "HUD visible inside a live `agy` session with model-step trigger" check runs on dev machines (with real OAuth) via `release.sh`'s built-in E2E gate.
 
@@ -203,7 +206,7 @@ CI runs in **no-auth mode**: it asserts the standalone HUD command renders the b
 
 ## Known issues
 
-- **PNG screenshot artifact**: the CI step that renders a PNG via [vhs](https://github.com/charmbracelet/vhs) is `continue-on-error` and currently sometimes drops; the raw PTY ANSI log is the reliable evidence.
+- **Windows PNG screenshot**: every CI run uploads `hud-ascii-*.png` and `hud-unicode-*.png` for macOS + Linux via [charm.sh `freeze`](https://github.com/charmbracelet/freeze). Windows is skipped — `freeze v0.2.2` errors `No input` for every invocation form (positional file, `--execute`, UTF-8 file via `.WriteAllText`) we tried; it's an upstream Windows bug. Windows reviewers still get the raw ANSI bytes via the `e2e-windows-latest` artifact (`cat` it to see the HUD with colors).
 
 > **Note for Windows users**: the HUD auto-detects your console codepage. On `cp936` / `cp1252` (etc) it falls back to ASCII glyphs (`|`, `[B]`, `[P]`, …). To get the prettier UTF-8 box-drawing characters (`│`, `⎇`, `❖`, …), use Windows Terminal (defaults to UTF-8) or run `chcp 65001` once in your shell before opening `agy`.
 

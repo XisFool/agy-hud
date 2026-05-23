@@ -193,9 +193,12 @@ agy-hud/
 | macos-latest  | ✅ | ✅ | ✅ |
 | windows-latest | ✅ | ✅ | ✅ |
 
-每次 run 上传两份 artifact（保留 14 天）：
-- `e2e-<os>/e2e-report.json` — 完整诊断（`ok` / `hudVisible` / `staleCleaned` 等）
-- `e2e-<os>/agy-hud-pty-*.log` — 带 ANSI 颜色的原始 PTY 字节。`cat` 这文件就能在终端看到带色的 HUD
+每次 run 上传（保留 14 天）：
+
+| Artifact | OS | 内容 |
+|---|---|---|
+| `e2e-<os>` | 全 3 个 | `e2e-report.json`（诊断：`ok` / `hudVisible` / `staleCleaned` 等）+ `agy-hud-pty-*.log`（带 ANSI 颜色的原始字节——`cat` 这文件就能在终端看到带色的 HUD） |
+| `hud-screenshot-<os>` | ubuntu + macos | `hud-ascii-<os>.png` + `hud-unicode-<os>.png`，用 [charm.sh `freeze`](https://github.com/charmbracelet/freeze) 渲。PNG 可视化证据——下载用图片查看器打开 |
 
 CI 跑的是 **no-auth 模式**：断言独立 HUD 命令输出横幅。"在真 agy 会话里看见 HUD" 这一层在 dev 机器（有真 OAuth）由 `release.sh` 内置 E2E gate 跑。
 
@@ -203,7 +206,7 @@ CI 跑的是 **no-auth 模式**：断言独立 HUD 命令输出横幅。"在真 
 
 ## 已知问题
 
-- **PNG 截图 artifact**：CI 里用 [vhs](https://github.com/charmbracelet/vhs) 渲 PNG 那步是 `continue-on-error`，偶尔失败丢图；带色的 PTY ANSI log 才是稳定的证据
+- **Windows PNG 截图**：CI 每次 run 都用 [charm.sh `freeze`](https://github.com/charmbracelet/freeze) 给 macOS + Linux 上传 `hud-ascii-*.png` 和 `hud-unicode-*.png`。Windows 跳过——`freeze v0.2.2` 在所有调用方式（positional 文件路径、`--execute`、`.WriteAllText` 写 UTF-8 文件）下都报 `No input`，是上游 Windows-only bug。Windows reviewer 仍能从 `e2e-windows-latest` artifact 里拿到带 ANSI 颜色的原始字节（`cat` 一下就能看到带色 HUD）
 
 > **Windows 用户提示**：HUD 会自动检测你的 console codepage。`cp936` / `cp1252` 等非 UTF-8 codepage 下会自动 fallback 到 ASCII 字形（`|`、`[B]`、`[P]`…）。想看好看的 UTF-8 框线字符（`│`、`⎇`、`❖`…），用 Windows Terminal（默认 UTF-8）或者先在 shell 里跑一次 `chcp 65001` 再开 `agy`
 

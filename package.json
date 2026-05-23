@@ -1,6 +1,6 @@
 {
   "name": "agy-hud",
-  "version": "0.3.1",
+  "version": "0.3.2",
   "description": "Premium HUD for Antigravity CLI",
   "main": "runtime/bin/agy-hud.js",
   "files": [
