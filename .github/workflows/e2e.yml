@@ -139,38 +139,57 @@ jobs:
           if-no-files-found: warn
           retention-days: 14
 
-      # Render a screenshot of the HUD output. Uses charm.sh `vhs` which
-      # records a tape file → PNG/GIF, so reviewers see an actual image
-      # of the HUD instead of having to cat an ANSI dump.
-      - name: Install vhs (macOS)
+      # Render PNG screenshots of the HUD using charm.sh `freeze`. Purpose-built
+      # for ANSI → PNG; no PTY / ttyd / tape machinery like vhs. Two variants:
+      #   - hud-ascii: AGY_HUD_FORCE_ASCII=1 → every glyph is plain ASCII,
+      #     guaranteed to render even without Nerd Fonts (universal evidence)
+      #   - hud-unicode: default → pretty box-drawing chars when font cooperates
+      # freeze hangs on stdin in non-TTY contexts — always redirect `</dev/null`.
+      - name: Install freeze (macOS)
         if: runner.os == 'macOS'
-        run: brew install vhs
+        continue-on-error: true
+        run: brew install charmbracelet/tap/freeze
 
-      - name: Install vhs (Linux)
+      - name: Install freeze (Linux)
         if: runner.os == 'Linux'
         continue-on-error: true
         run: |
-          sudo apt-get update
-          sudo apt-get install -y ffmpeg ttyd
-          # Discover the actual asset name from latest release rather than guessing
-          ASSET_URL=$(curl -fsSL https://api.github.com/repos/charmbracelet/vhs/releases/latest \
-            | grep -oE 'https://[^"]*vhs[^"]*[Ll]inux[^"]*x86_64\.tar\.gz' | head -1)
+          ASSET_URL=$(curl -fsSL https://api.github.com/repos/charmbracelet/freeze/releases/latest \
+            | grep -oE 'https://[^"]*freeze[^"]*[Ll]inux[^"]*x86_64\.tar\.gz' | head -1)
           if [ -z "$ASSET_URL" ]; then
-            ASSET_URL=$(curl -fsSL https://api.github.com/repos/charmbracelet/vhs/releases/latest \
-              | grep -oE 'https://[^"]*vhs[^"]*[Ll]inux[^"]*amd64\.tar\.gz' | head -1)
+            ASSET_URL=$(curl -fsSL https://api.github.com/repos/charmbracelet/freeze/releases/latest \
+              | grep -oE 'https://[^"]*freeze[^"]*[Ll]inux[^"]*amd64\.tar\.gz' | head -1)
           fi
           if [ -z "$ASSET_URL" ]; then
-            echo "could not find vhs Linux asset; skipping screenshot render"
+            echo "could not find freeze Linux asset; skipping screenshot render"
             exit 0
           fi
-          echo "vhs asset: $ASSET_URL"
-          curl -fsSL "$ASSET_URL" -o /tmp/vhs.tar.gz
-          tar -xzf /tmp/vhs.tar.gz -C /tmp/
-          VHS_BIN=$(find /tmp -name vhs -type f -executable | head -1)
-          sudo mv "$VHS_BIN" /usr/local/bin/vhs
-          vhs --version
+          echo "freeze asset: $ASSET_URL"
+          curl -fsSL "$ASSET_URL" -o /tmp/freeze.tar.gz
+          mkdir -p /tmp/freeze-extract
+          tar -xzf /tmp/freeze.tar.gz -C /tmp/freeze-extract
+          FREEZE_BIN=$(find /tmp/freeze-extract -name freeze -type f -executable | head -1)
+          sudo mv "$FREEZE_BIN" /usr/local/bin/freeze
+          freeze --version
 
-      - name: Render HUD screenshot (Unix)
+      - name: Install freeze (Windows)
+        if: runner.os == 'Windows'
+        continue-on-error: true
+        shell: pwsh
+        run: |
+          $latest = irm https://api.github.com/repos/charmbracelet/freeze/releases/latest
+          $asset = $latest.assets | Where-Object { $_.name -match 'Windows.*x86_64.*\.zip$' } | Select-Object -First 1
+          if (-not $asset) {
+            Write-Host "no freeze Windows zip asset"
+            exit 0
+          }
+          Invoke-WebRequest -UseBasicParsing -Uri $asset.browser_download_url -OutFile $env:TEMP\freeze.zip
+          Expand-Archive -Path $env:TEMP\freeze.zip -DestinationPath $env:TEMP\freeze-extract -Force
+          $bin = Get-ChildItem -Path $env:TEMP\freeze-extract -Filter freeze.exe -Recurse | Select-Object -First 1
+          Add-Content -Path $env:GITHUB_PATH -Value $bin.DirectoryName
+          & $bin.FullName --version
+
+      - name: Render HUD screenshots (Unix)
         if: runner.os != 'Windows'
         shell: bash
         continue-on-error: true
@@ -180,26 +199,53 @@ jobs:
             echo "runtime not present, skipping screenshot"
             exit 0
           fi
-          cat > /tmp/hud.tape <<TAPE
-          Output /tmp/hud-${{ matrix.os }}.png
-          Set FontSize 14
-          Set Width 1400
-          Set Height 200
-          Set Theme "Dracula"
-          Hide
-          Type "node $HUD_JS < /dev/null"
-          Enter
-          Show
-          Sleep 2s
-          TAPE
-          vhs /tmp/hud.tape || echo "vhs render failed (non-fatal)"
-          ls -la /tmp/hud-*.png || echo "no PNG produced"
+          if ! command -v freeze >/dev/null 2>&1; then
+            echo "freeze not installed, skipping screenshot"
+            exit 0
+          fi
 
-      - name: Upload HUD screenshot
-        if: runner.os != 'Windows'
+          # ASCII variant — every glyph guaranteed readable on every font
+          AGY_HUD_FORCE_ASCII=1 node "$HUD_JS" < /dev/null > /tmp/hud-ascii.ansi
+          freeze < /dev/null \
+            --output "hud-ascii-${{ matrix.os }}.png" \
+            --language ansi \
+            --font.family "JetBrains Mono" \
+            /tmp/hud-ascii.ansi || echo "(ascii render failed)"
+
+          # Unicode variant — pretty box-drawing when the font has glyphs
+          node "$HUD_JS" < /dev/null > /tmp/hud-unicode.ansi
+          freeze < /dev/null \
+            --output "hud-unicode-${{ matrix.os }}.png" \
+            --language ansi \
+            --font.family "JetBrains Mono" \
+            /tmp/hud-unicode.ansi || echo "(unicode render failed)"
+
+          ls -la hud-*-${{ matrix.os }}.png 2>/dev/null || echo "no PNGs produced"
+
+      - name: Render HUD screenshots (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        continue-on-error: true
+        run: |
+          $HudJs = "$env:USERPROFILE\.gemini\antigravity-cli\agy-hud-runtime\runtime\bin\agy-hud.js"
+          if (-not (Test-Path $HudJs)) { Write-Host "runtime not present"; exit 0 }
+          if (-not (Get-Command freeze -ErrorAction SilentlyContinue)) { Write-Host "freeze not installed"; exit 0 }
+
+          $env:AGY_HUD_FORCE_ASCII = '1'
+          "" | & node $HudJs > "$env:TEMP\hud-ascii.ansi"
+          freeze --output "hud-ascii-windows-latest.png" --language ansi "$env:TEMP\hud-ascii.ansi" 2>&1
+
+          Remove-Item Env:AGY_HUD_FORCE_ASCII
+          "" | & node $HudJs > "$env:TEMP\hud-unicode.ansi"
+          freeze --output "hud-unicode-windows-latest.png" --language ansi "$env:TEMP\hud-unicode.ansi" 2>&1
+
+          Get-ChildItem -Filter "hud-*-windows-latest.png"
+
+      - name: Upload HUD screenshots
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: hud-screenshot-${{ matrix.os }}
-          path: /tmp/hud-*.png
+          path: hud-*-${{ matrix.os }}.png
           if-no-files-found: warn
           retention-days: 14
