@@ -110,11 +110,31 @@ function fail(message, details) {
 }
 
 function run(command, args, options = {}) {
-  return spawnSync(command, args, {
-    cwd: options.cwd || projectRoot,
-    env: options.env || process.env,
-    encoding: 'utf8',
-    timeout: options.timeout || 90_000,
+  // MUST be async: spawnSync blocks the Node event loop, which deadlocks the
+  // in-process zip HTTP server. agy download hangs → SIGTERM at timeout.
+  return new Promise(resolve => {
+    const child = spawn(command, args, {
+      cwd: options.cwd || projectRoot,
+      env: options.env || process.env,
+    });
+    let stdout = '';
+    let stderr = '';
+    let timedOut = false;
+    const timer = setTimeout(() => {
+      timedOut = true;
+      child.kill('SIGTERM');
+      setTimeout(() => child.kill('SIGKILL'), 1000).unref();
+    }, options.timeout || 90_000);
+    child.stdout.on('data', d => { stdout += d.toString(); });
+    child.stderr.on('data', d => { stderr += d.toString(); });
+    child.on('close', (status, signal) => {
+      clearTimeout(timer);
+      resolve({ status, signal, stdout, stderr, timedOut, error: null });
+    });
+    child.on('error', error => {
+      clearTimeout(timer);
+      resolve({ status: null, signal: null, stdout, stderr, timedOut, error });
+    });
   });
 }
 
@@ -157,6 +177,15 @@ function buildEnv(tmpRoot) {
   } else {
     env.XDG_DATA_HOME = path.join(tmpRoot, 'xdg');
   }
+  // Mirror the real OAuth token so agy in the isolated HOME can pass sign-in
+  // and actually render its TUI (including the statusLine). Without this, agy
+  // boots into the sign-in screen and never invokes statusLine_runner.
+  const realToken = path.join(os.homedir(), '.gemini', 'antigravity-cli', 'antigravity-oauth-token');
+  if (fs.existsSync(realToken)) {
+    const dst = path.join(home, '.gemini', 'antigravity-cli', 'antigravity-oauth-token');
+    fs.mkdirSync(path.dirname(dst), { recursive: true });
+    fs.copyFileSync(realToken, dst);
+  }
   return env;
 }
 
@@ -180,13 +209,45 @@ function readInstallState(env) {
 
 function observeLocalAgy(env) {
   return new Promise(resolve => {
-    const useScript = process.platform !== 'win32' && fs.existsSync('/usr/bin/script');
-    const command = useScript ? '/usr/bin/script' : agyBin;
-    const args = useScript ? ['-q', '/dev/null', agyBin] : [];
+    // Need a real PTY so agy renders its TUI (including statusLine). `script`
+    // requires a TTY on its own stdin, but node spawn() always gives a pipe.
+    // Workaround: use `expect` which natively allocates a PTY. Falls back to
+    // `script` with /dev/null stdin (degraded but better than plain pipe).
+    const hasExpect = fs.existsSync('/usr/bin/expect');
+    const hasScript = process.platform !== 'win32' && fs.existsSync('/usr/bin/script');
+    let command;
+    let args;
+    let mode;
+    if (hasExpect) {
+      command = '/usr/bin/expect';
+      // agy requires a PTY *with dimensions* to render its TUI. `stty rows X
+      // cols Y` inside the spawned bash sets the PTY size. After agy is up,
+      // send a prompt to trigger a model step — statusLine_runner only fires
+      // per-step, not at startup. Then wait for the response + statusLine
+      // render. SIGINT (^C) at the end so agy exits cleanly.
+      const observeSecs = Math.max(5, Math.floor(observeTimeoutMs / 1000) - 8);
+      args = ['-c', [
+        'set timeout 120',
+        `spawn -noecho bash -c "stty rows 40 cols 180; ${agyBin}"`,
+        'sleep 6',
+        'send "hello\\r"',
+        `sleep ${observeSecs}`,
+        'send "\\003"',
+        'expect eof',
+      ].join('; ')];
+      mode = 'expect-pty';
+    } else if (hasScript) {
+      command = 'bash';
+      args = ['-c', `/usr/bin/script -q /dev/null ${agyBin} < /dev/null`];
+      mode = 'script-tty';
+    } else {
+      command = agyBin;
+      args = [];
+      mode = 'plain';
+    }
     const child = spawn(command, args, {
-      env,
+      env: { ...env, TERM: env.TERM || 'xterm-256color' },
       cwd: os.homedir(),
-      encoding: 'utf8',
     });
     let stdout = '';
     let stderr = '';
@@ -205,11 +266,11 @@ function observeLocalAgy(env) {
     });
     child.on('close', (status, signal) => {
       clearTimeout(timer);
-      resolve({ status, signal, timedOut, stdout, stderr, mode: useScript ? 'script-tty' : 'plain' });
+      resolve({ status, signal, timedOut, stdout, stderr, mode });
     });
     child.on('error', error => {
       clearTimeout(timer);
-      resolve({ status: null, signal: null, timedOut, stdout, stderr, error: error.message, mode: useScript ? 'script-tty' : 'plain' });
+      resolve({ status: null, signal: null, timedOut, stdout, stderr, error: error.message, mode });
     });
   });
 }
@@ -224,7 +285,7 @@ function observeLocalAgy(env) {
   const env = buildEnv(tmpRoot);
   const { server, url } = await startZipServer();
   try {
-    const install = run(agyBin, ['plugin', 'install', url], { env, timeout: 120_000 });
+    const install = await run(agyBin, ['plugin', 'install', url], { env, timeout: 120_000 });
     if (install.status !== 0 || !/\[ok\]/.test(install.stdout || '')) {
       fail('agy plugin install failed', {
         status: install.status,
@@ -238,7 +299,7 @@ function observeLocalAgy(env) {
     const afterInstall = readInstallState(env);
 
     // Two-step install: plugin install does not run JS. Bootstrap explicitly.
-    const bootstrap = run(process.execPath, [path.join(projectRoot, 'scripts', 'bootstrap.js')], {
+    const bootstrap = await run(process.execPath, [path.join(projectRoot, 'scripts', 'bootstrap.js')], {
       env: { ...env, AGY_HUD_SETUP_SOURCE_DIR: projectRoot },
       timeout: 60_000,
     });
@@ -255,8 +316,13 @@ function observeLocalAgy(env) {
     const observedPlain = stripAnsi(observedRaw);
     const observedScreen = renderTerminalScreen(observedRaw);
     const afterObserve = readInstallState(env);
-    const hudVisible = /AGY-HUD/.test(observedScreen);
-    const streamHudPresent = /AGY-HUD/.test(observedPlain);
+    // Robust HUD presence check: agy emits cursor-positioning ANSI like `\x1b[5\``
+    // (HPA = horizontal position absolute) that our stripAnsi regex doesn't
+    // strip and the screen renderer collapses. The most reliable signal is
+    // "literal AGY-HUD bytes appeared in the PTY stream at all".
+    const hudInRaw = observedRaw.includes('AGY-HUD');
+    const hudVisible = hudInRaw || /AGY-HUD/.test(observedScreen);
+    const streamHudPresent = hudInRaw || /AGY-HUD/.test(observedPlain);
     const statusLineReady = Boolean(afterObserve.statusLine && /agy-hud/i.test(String(afterObserve.statusLine.command || '')));
     const runtimeReady = Boolean(afterObserve.runtimeHudExists);
     const displayReady = hudVisible && statusLineReady && runtimeReady;
