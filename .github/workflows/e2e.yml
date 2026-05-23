@@ -189,23 +189,21 @@ jobs:
           Add-Content -Path $env:GITHUB_PATH -Value $bin.DirectoryName
           & $bin.FullName --version
 
+      # Render from the repo's runtime/ directly — don't depend on a HOME-installed
+      # runtime (verify-display.js installs into an isolated tmp HOME then cleans up,
+      # so $HOME/.gemini/... is empty at this point).
       - name: Render HUD screenshots (Unix)
         if: runner.os != 'Windows'
         shell: bash
         continue-on-error: true
         run: |
-          HUD_JS="$HOME/.gemini/antigravity-cli/agy-hud-runtime/runtime/bin/agy-hud.js"
-          if [ ! -f "$HUD_JS" ]; then
-            echo "runtime not present, skipping screenshot"
-            exit 0
-          fi
           if ! command -v freeze >/dev/null 2>&1; then
             echo "freeze not installed, skipping screenshot"
             exit 0
           fi
 
           # ASCII variant — every glyph guaranteed readable on every font
-          AGY_HUD_FORCE_ASCII=1 node "$HUD_JS" < /dev/null > /tmp/hud-ascii.ansi
+          AGY_HUD_FORCE_ASCII=1 node runtime/bin/agy-hud.js < /dev/null > /tmp/hud-ascii.ansi
           freeze < /dev/null \
             --output "hud-ascii-${{ matrix.os }}.png" \
             --language ansi \
@@ -213,7 +211,7 @@ jobs:
             /tmp/hud-ascii.ansi || echo "(ascii render failed)"
 
           # Unicode variant — pretty box-drawing when the font has glyphs
-          node "$HUD_JS" < /dev/null > /tmp/hud-unicode.ansi
+          node runtime/bin/agy-hud.js < /dev/null > /tmp/hud-unicode.ansi
           freeze < /dev/null \
             --output "hud-unicode-${{ matrix.os }}.png" \
             --language ansi \
@@ -227,16 +225,14 @@ jobs:
         shell: pwsh
         continue-on-error: true
         run: |
-          $HudJs = "$env:USERPROFILE\.gemini\antigravity-cli\agy-hud-runtime\runtime\bin\agy-hud.js"
-          if (-not (Test-Path $HudJs)) { Write-Host "runtime not present"; exit 0 }
           if (-not (Get-Command freeze -ErrorAction SilentlyContinue)) { Write-Host "freeze not installed"; exit 0 }
 
           $env:AGY_HUD_FORCE_ASCII = '1'
-          "" | & node $HudJs > "$env:TEMP\hud-ascii.ansi"
+          "" | & node runtime\bin\agy-hud.js > "$env:TEMP\hud-ascii.ansi"
           freeze --output "hud-ascii-windows-latest.png" --language ansi "$env:TEMP\hud-ascii.ansi" 2>&1
 
           Remove-Item Env:AGY_HUD_FORCE_ASCII
-          "" | & node $HudJs > "$env:TEMP\hud-unicode.ansi"
+          "" | & node runtime\bin\agy-hud.js > "$env:TEMP\hud-unicode.ansi"
           freeze --output "hud-unicode-windows-latest.png" --language ansi "$env:TEMP\hud-unicode.ansi" 2>&1
 
           Get-ChildItem -Filter "hud-*-windows-latest.png"
