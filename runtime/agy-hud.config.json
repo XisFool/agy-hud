@@ -10,7 +10,6 @@
     "showBreadcrumbs": true,
     "showGitBranch": true,
     "breadcrumbCount": 3,
-    "unicode": true,
     "useNerdFonts": false
   },
   "thresholds": {
