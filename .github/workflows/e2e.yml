@@ -107,6 +107,8 @@ jobs:
           Remove-Item -Recurse -Force release_tmp
 
       # Run verify-display in no-auth mode (CI doesn't have OAuth).
+      # Use a repo-relative path for the report file: ${{ runner.temp }}
+      # contains backslashes on Windows that get eaten by bash heredoc → node -e.
       - name: Run E2E (no-auth)
         env:
           AGY_HUD_E2E_NO_AUTH_OBSERVE: '1'
@@ -115,11 +117,11 @@ jobs:
         shell: bash
         run: |
           set +e
-          node scripts/verify-display.js > "${{ runner.temp }}/e2e-report.json" 2>&1
+          node scripts/verify-display.js > e2e-report.json 2>&1
           E2E_RC=$?
           set -e
-          cat "${{ runner.temp }}/e2e-report.json"
-          OK=$(node -e "try { console.log(require('${{ runner.temp }}/e2e-report.json').ok || false) } catch (e) { console.log('parse_error: ' + e.message) }")
+          cat e2e-report.json
+          OK=$(node -e "try { console.log(require('./e2e-report.json').ok || false) } catch (e) { console.log('parse_error: ' + e.message) }")
           echo "report.ok = $OK"
           if [ "$E2E_RC" != "0" ] || [ "$OK" != "true" ]; then
             echo "::error::E2E failed on ${{ matrix.os }} (exit=$E2E_RC ok=$OK)"
@@ -132,7 +134,7 @@ jobs:
         with:
           name: e2e-${{ matrix.os }}
           path: |
-            ${{ runner.temp }}/e2e-report.json
+            e2e-report.json
             ${{ runner.temp }}/agy-hud-pty-*.log
           if-no-files-found: warn
           retention-days: 14
