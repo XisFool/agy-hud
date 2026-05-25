@@ -256,7 +256,17 @@ CI 跑的是 **no-auth 模式**：断言独立 HUD 命令输出横幅。"在真 
 
 - **Windows PNG 截图**：CI 每次 run 都用 [charm.sh `freeze`](https://github.com/charmbracelet/freeze) 给 macOS + Linux 上传 `hud-ascii-*.png` 和 `hud-unicode-*.png`。Windows 跳过——`freeze v0.2.2` 在所有调用方式（positional 文件路径、`--execute`、`.WriteAllText` 写 UTF-8 文件）下都报 `No input`，是上游 Windows-only bug。Windows reviewer 仍能从 `e2e-windows-latest` artifact 里拿到带 ANSI 颜色的原始字节（`cat` 一下就能看到带色 HUD）
 
-> **Windows 用户提示**：HUD 会自动检测你的 console codepage。`cp936` / `cp1252` 等非 UTF-8 codepage 下会自动 fallback 到 ASCII 字形（`|`、`[B]`、`[P]`…）。想看好看的 UTF-8 框线字符（`│`、`⎇`、`❖`…），用 Windows Terminal（默认 UTF-8）或者先在 shell 里跑一次 `chcp 65001` 再开 `agy`
+> **Windows 用户提示**：HUD 会自动检测你当前终端的 active codepage。如果是非 UTF-8 的 codepage（如 `cp936` (GBK) 或 `cp1252`），进度条会自动 fallback 到 ASCII 字符（显示为 `#` 号），以防字符集不匹配导致终端排版错乱。
+>
+> 如果你在非 UTF-8 的 codepage 下强行开启 Unicode 渲染（例如在配置中将 `display.unicode` 设为 `true`），则有可能会在终端看到乱码或 `?` 替换字符。
+>
+> **如何在 Windows 下启用漂亮的 Unicode 进度条与框线：**
+> 1. **当前会话生效（推荐）**：在打开 `agy` 之前，先在 CMD / PowerShell 窗口里跑一次 `chcp 65001` 命令。
+> 2. **全局系统级 UTF-8 生效（永久）**：
+>    - 打开 Windows 设置 -> **时间和语言** -> **语言&区域** -> **管理语言设置** (Administrative language settings)。
+>    - 点击 **更改系统区域设置** (Change system locale)。
+>    - 勾选 **“测试版: 使用 Unicode UTF-8 提供全球语言支持”** (Beta: Use Unicode UTF-8 for worldwide language support) 并重启电脑。
+>    - 此操作会强制所有 Windows 控制台/终端原生以 UTF-8 (`cp65001`) 编码工作。
 
 ---
 

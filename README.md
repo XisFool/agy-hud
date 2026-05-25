@@ -256,7 +256,17 @@ CI runs in **no-auth mode**: it asserts the standalone HUD command renders the b
 
 - **Windows PNG screenshot**: every CI run uploads `hud-ascii-*.png` and `hud-unicode-*.png` for macOS + Linux via [charm.sh `freeze`](https://github.com/charmbracelet/freeze). Windows is skipped — `freeze v0.2.2` errors `No input` for every invocation form (positional file, `--execute`, UTF-8 file via `.WriteAllText`) we tried; it's an upstream Windows bug. Windows reviewers still get the raw ANSI bytes via the `e2e-windows-latest` artifact (`cat` it to see the HUD with colors).
 
-> **Note for Windows users**: the HUD auto-detects your console codepage. On `cp936` / `cp1252` (etc) it falls back to ASCII glyphs (`|`, `[B]`, `[P]`, …). To get the prettier UTF-8 box-drawing characters (`│`, `⎇`, `❖`, …), use Windows Terminal (defaults to UTF-8) or run `chcp 65001` once in your shell before opening `agy`.
+> **Note for Windows users**: The HUD auto-detects your active console codepage. If it's a non-UTF-8 codepage like `cp936` (GBK) or `cp1252`, the progress bar will fall back to ASCII characters (`#`) to prevent encoding corruption.
+>
+> If you force Unicode rendering (e.g. by setting `display.unicode: true` in your configuration) while the active codepage is not UTF-8, you may see garbled text or `?` replacement characters.
+>
+> **How to enable beautiful Unicode progress bars and borders on Windows:**
+> 1. **Per Session (Recommended)**: Run `chcp 65001` once in your Command Prompt / PowerShell window before opening `agy`.
+> 2. **System-wide UTF-8 (Permanent)**: 
+>    - Go to Windows Settings -> **Time & language** -> **Language & region** -> **Administrative language settings**.
+>    - Click **Change system locale**.
+>    - Check **"Beta: Use Unicode UTF-8 for worldwide language support"** and restart your computer.
+>    - This forces all terminal sessions to use UTF-8 (`cp65001`) natively.
 
 ---
 
