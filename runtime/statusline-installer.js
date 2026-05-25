@@ -25,22 +25,10 @@ function buildCmdShimContents(hudScriptPath) {
   const scriptName = path.win32.basename(hudScriptPath);
   return [
     '@echo off',
-    'setlocal EnableExtensions',
-    'for /f "tokens=2 delims=:" %%A in (\'chcp\') do set "OLD_CP=%%A"',
-    'if not "%OLD_CP%"=="" set "OLD_CP=%OLD_CP: =%"',
-    'chcp 65001 >nul 2>&1',
+    'setlocal',
     `node "%~dp0${scriptName}" %* 2>nul`,
-    'set "ERR=%ERRORLEVEL%"',
-    'if %ERR%==0 (',
-    '  if not "%OLD_CP%"=="" chcp %OLD_CP% >nul 2>&1',
-    '  exit /b 0',
-    ')',
-    `if exist "%ProgramFiles%\\nodejs\\node.exe" (`,
-    `  "%ProgramFiles%\\nodejs\\node.exe" "%~dp0${scriptName}" %*`,
-    '  set "ERR=%ERRORLEVEL%"',
-    ')',
-    'if not "%OLD_CP%"=="" chcp %OLD_CP% >nul 2>&1',
-    'exit /b %ERR%',
+    'if %ERRORLEVEL%==0 exit /b 0',
+    `if exist "%ProgramFiles%\\nodejs\\node.exe" "%ProgramFiles%\\nodejs\\node.exe" "%~dp0${scriptName}" %*`,
     '',
   ].join('\r\n');
 }
