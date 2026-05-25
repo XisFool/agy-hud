@@ -5,6 +5,11 @@ import path from 'node:path';
 import os from 'node:os';
 import quotaModule from '../../runtime/quota.js';
 
+const { CACHE_PATH } = quotaModule;
+try {
+  fs.mkdirSync(path.dirname(CACHE_PATH), { recursive: true });
+} catch {}
+
 const {
   getQuota,
   getCachedTier,
@@ -591,8 +596,6 @@ test('extractTierName prioritizes paidTier over allowedTiers', () => {
 });
 
 // --- getCachedTier ---
-
-const { CACHE_PATH } = quotaModule;
 
 function withCacheFile(content, fn) {
   const prev = fs.existsSync(CACHE_PATH) ? fs.readFileSync(CACHE_PATH, 'utf8') : null;
