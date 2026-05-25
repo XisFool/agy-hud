@@ -54,6 +54,13 @@ test('normalizeQuotaModels treats quota buckets with resetTime but without remai
       displayName: 'Gemini 3.5 Flash (Medium)',
       quotaInfo: {}
     },
+    'gemini-3.5-flash-extra-low': {
+      displayName: 'Gemini 3.5 Flash (Low)',
+      quotaInfo: {
+        remainingFraction: 0.7,
+        resetTime: '2026-05-20T11:42:20Z'
+      }
+    },
     'claude-sonnet-4-6': {
       displayName: 'Claude Sonnet 4.6 (Thinking)',
       quotaInfo: {
@@ -77,6 +84,11 @@ test('normalizeQuotaModels treats quota buckets with resetTime but without remai
         id: 'gemini-3.5-flash-low',
         remainingFraction: 1,
         resetTime: null
+      },
+      {
+        id: 'gemini-3.5-flash-extra-low',
+        remainingFraction: 0.7,
+        resetTime: '2026-05-20T11:42:20Z'
       },
       {
         id: 'claude-sonnet-4-6',
