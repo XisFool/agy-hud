@@ -59,6 +59,32 @@ function removeTokenMirrors() {
   return removed;
 }
 
+/**
+ * Remove extra files written by the bootstrap/runtime that uninstall.js
+ * previously missed: agy-hud-payload.json and the hud/ directory.
+ *
+ * @param {string} root  antigravity-cli data root
+ * @returns {string[]}   list of paths actually removed
+ */
+function removeExtraFiles(root) {
+  const removed = [];
+  const targets = [
+    path.join(root, 'agy-hud-payload.json'),
+    path.join(root, 'hud'),
+  ];
+  for (const target of targets) {
+    if (fs.existsSync(target)) {
+      try {
+        fs.rmSync(target, { recursive: true, force: true });
+        removed.push(target);
+      } catch {
+        // best-effort
+      }
+    }
+  }
+  return removed;
+}
+
 function uninstall(options = {}) {
   const env = options.env || process.env;
   const homeDir = options.homeDir || os.homedir();
@@ -67,7 +93,7 @@ function uninstall(options = {}) {
   const roots = options.roots || getAntigravityRoots(env, homeDir);
   const settingsPath = options.settingsPath || resolveAntigravityPath('settings.json');
 
-  const results = { settingsPath, statusLine: null, runtimes: [], tokenMirrors: [] };
+  const results = { settingsPath, statusLine: null, runtimes: [], tokenMirrors: [], extraFiles: [] };
 
   for (const root of roots) {
     const runtimeDir = path.join(root, 'agy-hud-runtime');
@@ -78,6 +104,8 @@ function uninstall(options = {}) {
     if (rootSettings !== settingsPath) {
       results.runtimes.push({ runtimeDir: rootSettings, ...clearStatusLine(rootSettings, runtimeDir) });
     }
+    // Remove extra files (payload cache, hud dir) that earlier versions left behind.
+    results.extraFiles.push(...removeExtraFiles(root));
   }
 
   // Primary settings.json cleared against the active runtime path.
@@ -98,6 +126,9 @@ if (require.main === module) {
   for (const f of result.tokenMirrors) {
     process.stdout.write(`token mirror removed: ${f}\n`);
   }
+  for (const f of result.extraFiles) {
+    process.stdout.write(`extra file removed: ${f}\n`);
+  }
 }
 
 module.exports = {
@@ -105,5 +136,6 @@ module.exports = {
   clearStatusLine,
   removeRuntimeDir,
   removeTokenMirrors,
+  removeExtraFiles,
   uninstall,
 };
