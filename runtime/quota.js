@@ -81,8 +81,10 @@ const DEFAULT_INTERESTING_MODEL_IDS = [
   'gpt-oss-120b-medium',     // GPT-OSS 120B
 ];
 
-function normalizeRemainingFraction(value) {
-  if (value === undefined || value === null) return 1;
+function normalizeRemainingFraction(value, hasResetTime = false) {
+  if (value === undefined || value === null) {
+    return hasResetTime ? 0 : 1;
+  }
   if (typeof value !== 'number' || !Number.isFinite(value)) return 0;
   if (value < 0) return 0;
   if (value > 1) return 1;
@@ -103,7 +105,7 @@ function normalizeQuotaModels(models, interestingModelIds = DEFAULT_INTERESTING_
     results.push({
       id,
       displayName: m.displayName || id,
-      remainingFraction: normalizeRemainingFraction(qi.remainingFraction),
+      remainingFraction: normalizeRemainingFraction(qi.remainingFraction, !!qi.resetTime),
       resetTime: qi.resetTime || null,
     });
   }

@@ -37,13 +37,17 @@ function withEnv(overrides, fn) {
   }
 }
 
-test('normalizeQuotaModels treats quota buckets without remainingFraction as unlimited (1)', () => {
+test('normalizeQuotaModels treats quota buckets with resetTime but without remainingFraction as depleted (0) and others as unlimited (1)', () => {
   const models = {
     'gemini-3-flash-agent': {
       displayName: 'Gemini 3.5 Flash (High)',
       quotaInfo: {
         resetTime: '2026-05-20T11:59:09Z'
       }
+    },
+    'gemini-3.5-flash-low': {
+      displayName: 'Gemini 3.5 Flash (Medium)',
+      quotaInfo: {}
     },
     'claude-sonnet-4-6': {
       displayName: 'Claude Sonnet 4.6 (Thinking)',
@@ -61,8 +65,13 @@ test('normalizeQuotaModels treats quota buckets without remainingFraction as unl
     [
       {
         id: 'gemini-3-flash-agent',
-        remainingFraction: 1,
+        remainingFraction: 0,
         resetTime: '2026-05-20T11:59:09Z'
+      },
+      {
+        id: 'gemini-3.5-flash-low',
+        remainingFraction: 1,
+        resetTime: null
       },
       {
         id: 'claude-sonnet-4-6',
