@@ -72,7 +72,7 @@ test('renderHUD should correctly layout quotas in two aligned columns', () => {
   assert.match(output, /───/);
   // Verify simplified names
   assert.match(output, /Gem 3.5 Flash\(H\)/);
-  assert.match(output, /Claude 4.6\(Th\)/);
+  assert.match(output, /Sonnet 4.6\(Th\)/);
   assert.match(output, /GPT-OSS 120B/);
   // Verify reset times
   assert.match(output, /~14m/);
