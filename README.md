@@ -176,13 +176,12 @@ Optional. Create `agy-hud.config.json` at the workspace root to override default
 ```json
 {
   "display": {
-    "unicode": true,
-    "nerdFont": false,
-    "columnWidth": 35
+    "useNerdFonts": false,
+    "columnWidth": 37
   },
   "thresholds": {
-    "warning": 30,
-    "critical": 10
+    "warning": 0.7,
+    "critical": 0.9
   },
   "theme": {
     "warning": "yellow",

@@ -35,7 +35,9 @@ function getAntigravityRoots(env = process.env, homeDir = os.homedir()) {
 function pickAntigravityRoot(env = process.env, homeDir = os.homedir()) {
   const roots = getAntigravityRoots(env, homeDir);
   for (const root of roots) {
-    if (fs.existsSync(path.join(root, 'plugins', 'agy-hud', 'plugin.json'))) {
+    if (getPluginDirs(root, { env, homeDir }).some(pluginDir =>
+      fs.existsSync(path.join(pluginDir, 'plugin.json'))
+    )) {
       return root;
     }
   }
@@ -92,25 +94,72 @@ async function readRuntimeFile(relativePath, options) {
 const STALE_PLUGIN_FILES = ['hooks.json', 'mcp_config.json'];
 const STALE_PLUGIN_DIRS = ['agents', 'commands', 'rules', 'extensions'];
 
-function cleanStalePluginFiles(antigravityRoot) {
-  const pluginDir = path.join(antigravityRoot, 'plugins', 'agy-hud');
-  if (!fs.existsSync(pluginDir)) return [];
-  const removed = [];
-  for (const f of STALE_PLUGIN_FILES) {
-    const p = path.join(pluginDir, f);
-    if (fs.existsSync(p)) {
-      fs.rmSync(p, { force: true });
-      removed.push(p);
-    }
+function unique(values) {
+  return [...new Set(values.filter(Boolean))];
+}
+
+function getPluginDirs(antigravityRoot, options = {}) {
+  const env = options.env || process.env;
+  const homeDir = options.homeDir || os.homedir();
+  const dirs = [
+    // agy 1.0.x stages imported plugins under ~/.gemini/config/plugins.
+    path.join(homeDir, '.gemini', 'config', 'plugins', 'agy-hud'),
+    // Older agy-hud releases and early agy builds used antigravity-cli/plugins.
+    path.join(antigravityRoot, 'plugins', 'agy-hud'),
+  ];
+
+  if (env.XDG_CONFIG_HOME) {
+    dirs.push(path.join(env.XDG_CONFIG_HOME, 'gemini', 'plugins', 'agy-hud'));
   }
-  for (const d of STALE_PLUGIN_DIRS) {
-    const p = path.join(pluginDir, d);
-    if (fs.existsSync(p)) {
-      fs.rmSync(p, { recursive: true, force: true });
-      removed.push(p);
+  if (env.APPDATA) {
+    dirs.push(path.join(env.APPDATA, 'gemini', 'plugins', 'agy-hud'));
+  }
+
+  return unique(dirs.map(dir => path.resolve(dir)));
+}
+
+function cleanStalePluginFiles(antigravityRoot, options = {}) {
+  const removed = [];
+  for (const pluginDir of getPluginDirs(antigravityRoot, options)) {
+    if (!fs.existsSync(pluginDir)) continue;
+    for (const f of STALE_PLUGIN_FILES) {
+      const p = path.join(pluginDir, f);
+      if (fs.existsSync(p)) {
+        fs.rmSync(p, { force: true });
+        removed.push(p);
+      }
+    }
+    for (const d of STALE_PLUGIN_DIRS) {
+      const p = path.join(pluginDir, d);
+      if (fs.existsSync(p)) {
+        fs.rmSync(p, { recursive: true, force: true });
+        removed.push(p);
+      }
     }
   }
   return removed;
+}
+
+function replaceRuntimeDirAtomically(runtimeDir, tempRuntimeDir) {
+  const backupDir = `${runtimeDir}.bak-${process.pid}-${Date.now()}`;
+  let backedUp = false;
+
+  try {
+    if (fs.existsSync(runtimeDir)) {
+      fs.renameSync(runtimeDir, backupDir);
+      backedUp = true;
+    }
+    fs.renameSync(tempRuntimeDir, runtimeDir);
+    if (backedUp) fs.rmSync(backupDir, { recursive: true, force: true });
+  } catch (error) {
+    if (backedUp && fs.existsSync(runtimeDir)) {
+      fs.rmSync(runtimeDir, { recursive: true, force: true });
+    }
+    if (backedUp && fs.existsSync(backupDir)) {
+      fs.renameSync(backupDir, runtimeDir);
+    }
+    throw error;
+  }
 }
 
 async function installRuntime(options = {}) {
@@ -120,15 +169,22 @@ async function installRuntime(options = {}) {
   const sourceBase = options.sourceBase || env.AGY_HUD_REPO_RAW || env.AGY_HUD_SETUP_SOURCE_BASE || DEFAULT_SOURCE_BASE;
   const antigravityRoot = options.antigravityRoot || pickAntigravityRoot(env, homeDir);
   const runtimeDir = path.join(antigravityRoot, 'agy-hud-runtime');
+  const tempRuntimeDir = `${runtimeDir}.tmp-${process.pid}-${Date.now()}`;
 
-  const stalePluginFiles = cleanStalePluginFiles(antigravityRoot);
-  fs.rmSync(runtimeDir, { recursive: true, force: true });
+  const stalePluginFiles = cleanStalePluginFiles(antigravityRoot, { env, homeDir });
+  fs.rmSync(tempRuntimeDir, { recursive: true, force: true });
 
-  for (const relativePath of RUNTIME_FILES) {
-    const body = await readRuntimeFile(relativePath, { sourceDir, sourceBase });
-    const target = path.join(runtimeDir, ...relativePath.split('/'));
-    fs.mkdirSync(path.dirname(target), { recursive: true });
-    fs.writeFileSync(target, body);
+  try {
+    for (const relativePath of RUNTIME_FILES) {
+      const body = await readRuntimeFile(relativePath, { sourceDir, sourceBase });
+      const target = path.join(tempRuntimeDir, ...relativePath.split('/'));
+      fs.mkdirSync(path.dirname(target), { recursive: true });
+      fs.writeFileSync(target, body);
+    }
+    replaceRuntimeDirAtomically(runtimeDir, tempRuntimeDir);
+  } catch (error) {
+    fs.rmSync(tempRuntimeDir, { recursive: true, force: true });
+    throw error;
   }
 
   const installerPath = path.join(runtimeDir, 'runtime', 'statusline-installer.js');
@@ -205,9 +261,11 @@ module.exports = {
   RUNTIME_FILES,
   STALE_PLUGIN_FILES,
   STALE_PLUGIN_DIRS,
+  getPluginDirs,
   getAntigravityRoots,
   pickAntigravityRoot,
   cleanStalePluginFiles,
+  replaceRuntimeDirAtomically,
   installRuntime,
   refreshQuotaCache,
 };

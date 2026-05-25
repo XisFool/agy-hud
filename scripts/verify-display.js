@@ -193,7 +193,7 @@ function readInstallState(env) {
   const home = env.HOME || env.USERPROFILE || os.homedir();
   const base = path.join(home, '.gemini', 'antigravity-cli');
   const settingsPath = path.join(base, 'settings.json');
-  const pluginDir = path.join(base, 'plugins', 'agy-hud');
+  const pluginDirs = getPluginDirs(env);
   const runtimeDir = path.join(base, 'agy-hud-runtime');
   let settings = null;
   try { settings = JSON.parse(fs.readFileSync(settingsPath, 'utf8')); } catch { /* missing */ }
@@ -201,10 +201,27 @@ function readInstallState(env) {
     base,
     settingsExists: fs.existsSync(settingsPath),
     statusLine: settings && settings.statusLine ? settings.statusLine : null,
-    pluginExists: fs.existsSync(pluginDir),
+    pluginExists: pluginDirs.some(pluginDir => fs.existsSync(pluginDir)),
+    pluginDirs: pluginDirs.filter(pluginDir => fs.existsSync(pluginDir)),
     runtimeExists: fs.existsSync(runtimeDir),
     runtimeHudExists: fs.existsSync(path.join(runtimeDir, 'runtime', 'bin', 'agy-hud.js')),
   };
+}
+
+function getPluginDirs(env) {
+  const home = env.HOME || env.USERPROFILE || os.homedir();
+  const base = path.join(home, '.gemini', 'antigravity-cli');
+  const dirs = [
+    path.join(home, '.gemini', 'config', 'plugins', 'agy-hud'),
+    path.join(base, 'plugins', 'agy-hud'),
+  ];
+  if (env.XDG_CONFIG_HOME) {
+    dirs.push(path.join(env.XDG_CONFIG_HOME, 'gemini', 'plugins', 'agy-hud'));
+  }
+  if (env.APPDATA) {
+    dirs.push(path.join(env.APPDATA, 'gemini', 'plugins', 'agy-hud'));
+  }
+  return [...new Set(dirs.map(dir => path.resolve(dir)))];
 }
 
 function observeLocalAgy(env) {
@@ -296,14 +313,14 @@ function observeLocalAgy(env) {
     // staged plugin dir BEFORE bootstrap. v0.1.x left this behind in real
     // user installs, fired a base64 blob hook every model step, and clobbered
     // settings.json statusLine. Bootstrap must clean it.
-    const stagedPluginDir = path.join(env.HOME, '.gemini', 'antigravity-cli', 'plugins', 'agy-hud');
-    const planted = path.join(stagedPluginDir, 'hooks.json');
-    if (fs.existsSync(stagedPluginDir)) {
+    const stagedPluginDir = getPluginDirs(env).find(pluginDir => fs.existsSync(pluginDir));
+    const planted = stagedPluginDir ? path.join(stagedPluginDir, 'hooks.json') : null;
+    if (stagedPluginDir) {
       fs.writeFileSync(planted, JSON.stringify({
         post_invocation_hooks: [{ command: 'echo simulated-stale-hook-from-v0.1.x' }]
       }));
     }
-    const stalePresentBeforeBootstrap = fs.existsSync(planted);
+    const stalePresentBeforeBootstrap = Boolean(planted && fs.existsSync(planted));
     const noAuthMode = process.env.AGY_HUD_E2E_NO_AUTH_OBSERVE === '1';
     if (install.status !== 0 || !/\[ok\]/.test(install.stdout || '')) {
       fail('agy plugin install failed', {

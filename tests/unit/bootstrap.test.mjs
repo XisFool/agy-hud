@@ -175,3 +175,72 @@ test('bootstrap skips quota refresh when the available token is expired', async 
     fs.rmSync(home, { recursive: true, force: true });
   }
 });
+
+test('bootstrap cleans stale plugin files from current agy config plugin root', async () => {
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'agy-hud-plugin-root-'));
+  try {
+    const antigravityRoot = path.join(home, '.gemini', 'antigravity-cli');
+    const configPluginDir = path.join(home, '.gemini', 'config', 'plugins', 'agy-hud');
+    fs.mkdirSync(configPluginDir, { recursive: true });
+    const staleHook = path.join(configPluginDir, 'hooks.json');
+    const staleAgents = path.join(configPluginDir, 'agents');
+    fs.writeFileSync(staleHook, '{}');
+    fs.mkdirSync(staleAgents);
+
+    const { cleanStalePluginFiles } = require(path.join(projectRoot, 'scripts', 'bootstrap.js'));
+    const removed = cleanStalePluginFiles(antigravityRoot, {
+      env: {
+        ...process.env,
+        HOME: home,
+        USERPROFILE: home,
+      },
+      homeDir: home,
+    });
+
+    assert.equal(fs.existsSync(staleHook), false);
+    assert.equal(fs.existsSync(staleAgents), false);
+    assert.deepEqual(
+      removed.map(entry => path.relative(home, entry)).sort(),
+      [
+        path.join('.gemini', 'config', 'plugins', 'agy-hud', 'agents'),
+        path.join('.gemini', 'config', 'plugins', 'agy-hud', 'hooks.json'),
+      ].sort()
+    );
+  } finally {
+    fs.rmSync(home, { recursive: true, force: true });
+  }
+});
+
+test('bootstrap preserves existing runtime when replacement download fails', async () => {
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'agy-hud-bootstrap-atomic-'));
+  const source = fs.mkdtempSync(path.join(os.tmpdir(), 'agy-hud-incomplete-source-'));
+  try {
+    const antigravityRoot = path.join(home, '.gemini', 'antigravity-cli');
+    const runtimeDir = path.join(antigravityRoot, 'agy-hud-runtime');
+    const sentinel = path.join(runtimeDir, 'runtime', 'bin', 'agy-hud.js');
+    fs.mkdirSync(path.dirname(sentinel), { recursive: true });
+    fs.writeFileSync(sentinel, 'old working runtime');
+
+    const { installRuntime } = require(path.join(projectRoot, 'scripts', 'bootstrap.js'));
+    await assert.rejects(
+      () => installRuntime({
+        homeDir: home,
+        sourceDir: source,
+        env: {
+          ...process.env,
+          HOME: home,
+          USERPROFILE: home,
+          XDG_DATA_HOME: '',
+          APPDATA: '',
+          LOCALAPPDATA: '',
+        },
+      }),
+      /ENOENT/
+    );
+
+    assert.equal(fs.readFileSync(sentinel, 'utf8'), 'old working runtime');
+  } finally {
+    fs.rmSync(home, { recursive: true, force: true });
+    fs.rmSync(source, { recursive: true, force: true });
+  }
+});
