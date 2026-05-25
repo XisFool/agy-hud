@@ -59,9 +59,11 @@ test('Unix statusLine command uses absolute process.execPath', () => {
   assert.equal(command, '"/usr/local/bin/node" "/Users/me/.gemini/antigravity-cli/agy-hud-runtime/runtime/bin/agy-hud.js"');
 });
 
-test('buildCmdShimContents includes node-on-PATH first then Program Files fallback', () => {
+test('buildCmdShimContents includes node-on-PATH first then Program Files fallback and chcp logic', () => {
   const body = buildCmdShimContents('C:\\runtime\\bin\\agy-hud.js');
   assert.match(body, /^@echo off/);
+  assert.match(body, /chcp 65001/);
+  assert.match(body, /chcp %OLD_CP%/);
   assert.match(body, /node "%~dp0agy-hud\.js"/);
   assert.match(body, /%ProgramFiles%\\nodejs\\node\.exe/);
   // CRLF line endings for Windows .cmd files
