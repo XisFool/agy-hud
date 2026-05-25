@@ -52,6 +52,10 @@ test('CI uses reproducible install and scheduled agy drift checks', () => {
 
   assert.match(workflow, /^\s+schedule:/m);
   assert.match(workflow, /FORCE_JAVASCRIPT_ACTIONS_TO_NODE24:\s*'true'/);
+  assert.match(workflow, /actions\/checkout@v6/);
+  assert.match(workflow, /actions\/setup-node@v6/);
+  assert.match(workflow, /actions\/upload-artifact@v7/);
+  assert.doesNotMatch(workflow, /actions\/(?:checkout|setup-node|upload-artifact)@v4/);
   assert.match(workflow, /npm ci/);
   assert.doesNotMatch(workflow, /npm install/);
 });
