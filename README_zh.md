@@ -33,8 +33,19 @@ AGY-HUD │ ⎇ main │ ❖ Plan: Pro │ ⚡ Steps: 42 │ ✓ Tasks: 3
 
 一条命令搞定（在普通 shell 里跑，**不要**在已打开的 `agy` 会话里跑）：
 
+**macOS / Linux**：
 ```bash
 bash <(curl -fsSL https://raw.githubusercontent.com/icebear0828/agy-hud/main/scripts/install.sh)
+```
+
+**Windows PowerShell**：
+```powershell
+irm https://raw.githubusercontent.com/icebear0828/agy-hud/main/scripts/install.ps1 | iex
+```
+
+**Windows CMD**：
+```cmd
+powershell -ExecutionPolicy Bypass -Command "irm https://raw.githubusercontent.com/icebear0828/agy-hud/main/scripts/install.ps1 | iex"
 ```
 
 这条命令会：
@@ -52,19 +63,44 @@ bash <(curl -fsSL https://raw.githubusercontent.com/icebear0828/agy-hud/main/scr
 
 ### Fork / 镜像
 
+**macOS / Linux**：
 ```bash
 AGY_HUD_REPO_RAW=https://raw.githubusercontent.com/your-fork/agy-hud/main \
 AGY_HUD_REPO_URL=https://github.com/your-fork/agy-hud.git \
   bash <(curl -fsSL "$AGY_HUD_REPO_RAW/scripts/install.sh")
 ```
 
+**Windows PowerShell**：
+```powershell
+$env:AGY_HUD_REPO_RAW = 'https://raw.githubusercontent.com/your-fork/agy-hud/main'
+$env:AGY_HUD_REPO_URL = 'https://github.com/your-fork/agy-hud.git'
+irm "$env:AGY_HUD_REPO_RAW/scripts/install.ps1" | iex
+```
+
 ### 手动 / 高级
 
 如果你想分两步自己跑：
 
+**macOS / Linux**：
 ```bash
 agy plugin install https://github.com/icebear0828/agy-hud.git
 bash <(curl -fsSL https://raw.githubusercontent.com/icebear0828/agy-hud/main/scripts/bootstrap.sh)
+```
+
+**Windows PowerShell**：
+```powershell
+agy plugin install https://github.com/icebear0828/agy-hud.git
+$t = Join-Path $env:TEMP "agy-hud-bootstrap.js"
+Invoke-WebRequest -Uri https://raw.githubusercontent.com/icebear0828/agy-hud/main/scripts/bootstrap.js -OutFile $t -UseBasicParsing
+node $t; Remove-Item $t
+```
+
+**Windows CMD**：
+```cmd
+agy plugin install https://github.com/icebear0828/agy-hud.git
+powershell -Command "Invoke-WebRequest -Uri https://raw.githubusercontent.com/icebear0828/agy-hud/main/scripts/bootstrap.js -OutFile %TEMP%\agy-hud-bootstrap.js -UseBasicParsing"
+node %TEMP%\agy-hud-bootstrap.js
+del %TEMP%\agy-hud-bootstrap.js
 ```
 
 ---
@@ -108,10 +144,22 @@ ls -t ~/.gemini/antigravity-cli/log/cli-*.log | head -1 | xargs tail -50 | grep 
 
 ## 卸载
 
+**macOS / Linux**：
 ```bash
-bash uninstall.sh        # macOS / Linux
-.\uninstall.ps1          # Windows PowerShell
+bash <(curl -fsSL https://raw.githubusercontent.com/icebear0828/agy-hud/main/uninstall.sh)
 ```
+
+**Windows PowerShell**：
+```powershell
+irm https://raw.githubusercontent.com/icebear0828/agy-hud/main/uninstall.ps1 | iex
+```
+
+**Windows CMD**：
+```cmd
+powershell -ExecutionPolicy Bypass -Command "irm https://raw.githubusercontent.com/icebear0828/agy-hud/main/uninstall.ps1 | iex"
+```
+
+如果有 clone 仓库也可以直接跑：`bash uninstall.sh` / `.\uninstall.ps1`。
 
 会做：
 1. 清掉 `settings.json` `statusLine`（保留 `.bak` 备份）
@@ -159,7 +207,8 @@ agy-hud/
 │   ├── uninstall.js
 │   └── ...
 ├── scripts/
-│   ├── install.sh             # 一行安装入口（推荐）
+│   ├── install.sh             # 一行安装入口 — macOS/Linux
+│   ├── install.ps1            # 一行安装入口 — Windows PowerShell
 │   ├── bootstrap.sh           # 修复用入口（被 install.sh 调用）
 │   ├── bootstrap.js           # 实际下载 + 配置逻辑
 │   ├── verify-display.js      # E2E：install + bootstrap + PTY 起 agy + 断言 HUD
