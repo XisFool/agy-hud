@@ -51,6 +51,7 @@ test('CI uses reproducible install and scheduled agy drift checks', () => {
   const workflow = readText('.github/workflows/e2e.yml');
 
   assert.match(workflow, /^\s+schedule:/m);
+  assert.match(workflow, /FORCE_JAVASCRIPT_ACTIONS_TO_NODE24:\s*'true'/);
   assert.match(workflow, /npm ci/);
   assert.doesNotMatch(workflow, /npm install/);
 });

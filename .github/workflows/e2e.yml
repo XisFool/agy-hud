@@ -10,6 +10,9 @@ on:
     # has not changed.
     - cron: '23 10 * * *'
 
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
+
 # E2E gate: install agy CLI, install agy-hud, bootstrap, assert HUD command
 # renders AGY-HUD banner. Cross-platform (macOS / Windows / Linux). No OAuth
 # required — we only verify the install/bootstrap plumbing + the standalone
