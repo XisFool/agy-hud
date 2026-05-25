@@ -6,6 +6,7 @@ import path from 'node:path';
 import {
   getAntigravityRoots,
   resolveAntigravityPath,
+  resolveSafeExecutable,
 } from '../../runtime/paths.js';
 
 function withEnv(overrides, fn) {
@@ -100,5 +101,18 @@ test('resolveAntigravityPath joins multi-segment relative paths', () => {
       resolved,
       path.join(os.homedir(), '.gemini', 'antigravity-cli', 'brain', 'abc', 'log.jsonl')
     );
+  });
+});
+
+test('resolveSafeExecutable resolves absolute path and skips relative directories', () => {
+  const nodePath = resolveSafeExecutable('node');
+  assert.ok(nodePath);
+  assert.ok(path.isAbsolute(nodePath));
+
+  withEnv({
+    PATH: ['.', 'relative_dir', path.dirname(nodePath)].join(path.delimiter)
+  }, () => {
+    const resolved = resolveSafeExecutable('node');
+    assert.equal(resolved, nodePath);
   });
 });

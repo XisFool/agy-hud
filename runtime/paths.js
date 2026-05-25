@@ -49,7 +49,50 @@ function resolveAntigravityPath(relativePath) {
   return path.join(roots[0], relativePath);
 }
 
+/**
+ * Safely resolve the absolute path of a system executable without searching CWD.
+ * On Windows, it maps standard binaries directly to %SystemRoot%\System32 or WindowsPowerShell,
+ * and searches PATH while explicitly ignoring relative path directories.
+ *
+ * @param {string} name
+ * @returns {string|null}
+ */
+function resolveSafeExecutable(name) {
+  const platform = process.platform;
+  if (platform === 'win32') {
+    const systemRoot = process.env.SystemRoot || 'C:\\Windows';
+    if (name === 'chcp') {
+      return path.join(systemRoot, 'System32', 'chcp.com');
+    }
+    if (name === 'powershell') {
+      return path.join(systemRoot, 'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe');
+    }
+  }
+
+  const pathEnv = process.env.PATH || '';
+  const dirs = pathEnv.split(path.delimiter).filter(Boolean);
+  const extensions = platform === 'win32' ? ['.exe', '.cmd', '.bat'] : [''];
+
+  for (const dir of dirs) {
+    const trimmed = dir.trim();
+    if (!trimmed || trimmed === '.' || !path.isAbsolute(trimmed)) continue;
+
+    for (const ext of extensions) {
+      const fullPath = path.join(trimmed, name + ext);
+      try {
+        if (fs.existsSync(fullPath) && fs.statSync(fullPath).isFile()) {
+          return fullPath;
+        }
+      } catch {
+        // ignore errors reading path entries
+      }
+    }
+  }
+  return null;
+}
+
 module.exports = {
   getAntigravityRoots,
   resolveAntigravityPath,
+  resolveSafeExecutable,
 };

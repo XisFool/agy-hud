@@ -1,5 +1,6 @@
 const fs = require('fs');
-const { execSync } = require('child_process');
+const { execFileSync } = require('child_process');
+const { resolveSafeExecutable } = require('./paths.js');
 
 /**
  * @typedef {Object} SessionState
@@ -36,11 +37,14 @@ async function getSessionState(transcriptPath) {
   }
 
   try {
-    const gitBranch = execSync('git rev-parse --abbrev-ref HEAD', {
-      encoding: 'utf8',
-      stdio: ['ignore', 'pipe', 'ignore'],
-    }).trim();
-    branch = gitBranch;
+    const gitPath = resolveSafeExecutable('git');
+    if (gitPath) {
+      const gitBranch = execFileSync(gitPath, ['rev-parse', '--abbrev-ref', 'HEAD'], {
+        encoding: 'utf8',
+        stdio: ['ignore', 'pipe', 'ignore'],
+      }).trim();
+      branch = gitBranch;
+    }
   } catch {
     // Not a git repo or git not found
   }

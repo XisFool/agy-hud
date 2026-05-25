@@ -15,7 +15,7 @@ const path = require('path');
 const os = require('os');
 const crypto = require('crypto');
 const { execFileSync, spawn } = require('child_process');
-const { getAntigravityRoots, resolveAntigravityPath } = require('./paths.js');
+const { getAntigravityRoots, resolveAntigravityPath, resolveSafeExecutable } = require('./paths.js');
 
 // ─── Cross-platform token discovery ──────────────────────────────────────────
 // agy stores its OAuth token in different locations depending on the environment.
@@ -34,7 +34,7 @@ function getTokenCandidates(roots = getAntigravityRoots()) {
   return [...new Set(candidates)];
 }
 
-const CACHE_PATH = path.join(os.tmpdir(), 'agy-hud-quota-cache.json');
+const CACHE_PATH = resolveAntigravityPath('agy-hud-quota-cache.json');
 const CACHE_VERSION = 2;
 const WINDOWS_TOKEN_TEMP_TTL_MS = 5 * 60 * 1000;
 const WINDOWS_TOKEN_EXPIRY_SKEW_MS = 60 * 1000;
@@ -262,7 +262,9 @@ function readWindowsCredentialTokens(platform = process.platform) {
   if (platform !== 'win32') return null;
 
   try {
-    const raw = execFileSync('powershell', [
+    const powershellPath = resolveSafeExecutable('powershell');
+    if (!powershellPath) return null;
+    const raw = execFileSync(powershellPath, [
       '-NoProfile',
       '-NonInteractive',
       '-ExecutionPolicy',
@@ -554,7 +556,7 @@ function writeCache(data, tokenOrAccessToken, tier = null) {
     data,
   };
   try {
-    fs.writeFileSync(CACHE_PATH, JSON.stringify(payload));
+    fs.writeFileSync(CACHE_PATH, JSON.stringify(payload), { mode: 0o600 });
   } catch { /* ignore write errors */ }
 }
 
@@ -707,4 +709,5 @@ module.exports = {
   readCache,
   writeCache,
   readCachePayload,
+  CACHE_PATH,
 };

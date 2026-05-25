@@ -7,16 +7,22 @@ import { createRequire } from 'node:module';
 
 const require = createRequire(import.meta.url);
 const uninstallModule = require('../../runtime/uninstall.js');
-const { removeExtraFiles, clearStatusLine, uninstall } = uninstallModule;
+const { removeExtraFiles, removeWindowsShShims, clearStatusLine, uninstall } = uninstallModule;
 
 test('removeExtraFiles removes agy-hud-payload.json and hud directory', () => {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'uninstall-extra-test-'));
   try {
     const payloadFile = path.join(tmp, 'agy-hud-payload.json');
+    const tokenFile = path.join(tmp, 'agy-hud-token.json');
+    const cacheFile = path.join(tmp, 'agy-hud-quota-cache.json');
+    const errorFile = path.join(tmp, 'agy-hud-error.log');
     const hudDir = path.join(tmp, 'hud');
     const otherFile = path.join(tmp, 'other.json');
 
     fs.writeFileSync(payloadFile, '{}');
+    fs.writeFileSync(tokenFile, '{}');
+    fs.writeFileSync(cacheFile, '{}');
+    fs.writeFileSync(errorFile, '{}');
     fs.mkdirSync(hudDir, { recursive: true });
     fs.writeFileSync(path.join(hudDir, 'file.txt'), 'hello');
     fs.writeFileSync(otherFile, '{}');
@@ -24,8 +30,14 @@ test('removeExtraFiles removes agy-hud-payload.json and hud directory', () => {
     const removed = removeExtraFiles(tmp);
 
     assert.ok(removed.includes(payloadFile));
+    assert.ok(removed.includes(tokenFile));
+    assert.ok(removed.includes(cacheFile));
+    assert.ok(removed.includes(errorFile));
     assert.ok(removed.includes(hudDir));
     assert.ok(!fs.existsSync(payloadFile));
+    assert.ok(!fs.existsSync(tokenFile));
+    assert.ok(!fs.existsSync(cacheFile));
+    assert.ok(!fs.existsSync(errorFile));
     assert.ok(!fs.existsSync(hudDir));
     assert.ok(fs.existsSync(otherFile));
   } finally {
@@ -81,6 +93,38 @@ test('clearStatusLine leaves foreign statusLine commands untouched', () => {
 
     const updatedSettings = JSON.parse(fs.readFileSync(settingsPath, 'utf8'));
     assert.equal(updatedSettings.statusLine.command, 'node "/other/path/bin/script.js"');
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
+test('removeWindowsShShims cleans up only our shims on Windows', () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'uninstall-shims-test-'));
+  try {
+    const installer = require('../../runtime/statusline-installer.js');
+    const shimContents = installer.buildShShimContents();
+
+    const ourShim = path.join(tmp, 'sh.cmd');
+    const foreignShim = path.join(tmp, 'sh.bat');
+
+    // Create our shim matching exact contents
+    fs.writeFileSync(ourShim, shimContents, 'utf8');
+    // Create foreign shim with different contents
+    fs.writeFileSync(foreignShim, 'different contents', 'utf8');
+
+    // Mock getWindowsAgyBinDirs to return our temp directory
+    const originalGetDirs = installer.getWindowsAgyBinDirs;
+    installer.getWindowsAgyBinDirs = () => [tmp];
+
+    try {
+      const removed = removeWindowsShShims('win32', {});
+      assert.ok(removed.includes(ourShim));
+      assert.ok(!removed.includes(foreignShim));
+      assert.ok(!fs.existsSync(ourShim));
+      assert.ok(fs.existsSync(foreignShim));
+    } finally {
+      installer.getWindowsAgyBinDirs = originalGetDirs;
+    }
   } finally {
     fs.rmSync(tmp, { recursive: true, force: true });
   }

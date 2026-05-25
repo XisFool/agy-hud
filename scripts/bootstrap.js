@@ -59,7 +59,12 @@ function requestBuffer(url, redirectsLeft = 5) {
       const status = response.statusCode || 0;
       if (status >= 300 && status < 400 && response.headers.location && redirectsLeft > 0) {
         response.resume();
-        resolve(requestBuffer(new URL(response.headers.location, parsed).toString(), redirectsLeft - 1));
+        const nextUrl = new URL(response.headers.location, parsed);
+        if (parsed.protocol === 'https:' && nextUrl.protocol === 'http:') {
+          reject(new Error(`insecure redirect from https to http forbidden: ${url} -> ${nextUrl.toString()}`));
+          return;
+        }
+        resolve(requestBuffer(nextUrl.toString(), redirectsLeft - 1));
         return;
       }
       if (status < 200 || status >= 300) {

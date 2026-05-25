@@ -1,6 +1,7 @@
 'use strict';
 
-const { execSync } = require('child_process');
+const { execFileSync } = require('child_process');
+const { resolveSafeExecutable } = require('./paths.js');
 
 /**
  * Read the active Windows console codepage via `chcp`.
@@ -9,7 +10,9 @@ const { execSync } = require('child_process');
  */
 function readWindowsCodepage() {
   try {
-    const out = execSync('chcp', { stdio: ['ignore', 'pipe', 'ignore'], timeout: 500 }).toString();
+    const chcpPath = resolveSafeExecutable('chcp');
+    if (!chcpPath) return '';
+    const out = execFileSync(chcpPath, [], { stdio: ['ignore', 'pipe', 'ignore'], timeout: 500 }).toString();
     const match = out.match(/(\d{3,5})/);
     return match ? match[1] : '';
   } catch {

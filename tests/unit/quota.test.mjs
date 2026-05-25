@@ -583,7 +583,7 @@ test('extractTierName prioritizes paidTier over allowedTiers', () => {
 
 // --- getCachedTier ---
 
-const CACHE_PATH = path.join(os.tmpdir(), 'agy-hud-quota-cache.json');
+const { CACHE_PATH } = quotaModule;
 
 function withCacheFile(content, fn) {
   const prev = fs.existsSync(CACHE_PATH) ? fs.readFileSync(CACHE_PATH, 'utf8') : null;

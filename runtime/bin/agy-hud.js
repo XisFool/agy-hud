@@ -49,10 +49,10 @@ async function main() {
       const hudOutput = renderHUD(state, agyData, config, quotaData, tierName);
       process.stdout.write(hudOutput);
     } catch (err) {
-      // Write debug error to tmp directory
+      // Write debug error to Antigravity directory
       try {
-        const os = require('os');
-        fs.writeFileSync(path.join(os.tmpdir(), 'agy-hud-error.log'), err.stack || String(err));
+        const errorLogPath = resolveAntigravityPath('agy-hud-error.log');
+        fs.writeFileSync(errorLogPath, err.stack || String(err), { mode: 0o600 });
       } catch {}
     }
     process.exit(0);
