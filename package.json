@@ -6,7 +6,6 @@
   "files": [
     "runtime",
     "scripts",
-    "skills",
     "plugin.json",
     "README.md",
     "package.json"
@@ -23,9 +22,7 @@
     "test": "node --test tests/unit/*.test.mjs",
     "bootstrap": "node scripts/bootstrap.js",
     "verify": "node scripts/verify-display.js",
-    "diagnose": "node scripts/diagnose-auth.js",
-    "serve:release": "node scripts/serve-release.js",
-    "serve:source": "node scripts/serve-source.js"
+    "diagnose": "node scripts/diagnose-auth.js"
   },
   "keywords": [
     "antigravity",

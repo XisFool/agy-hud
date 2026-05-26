@@ -59,7 +59,7 @@ powershell -ExecutionPolicy Bypass -Command "irm https://raw.githubusercontent.c
 
 ### 为什么不只 `agy plugin install` 一步？
 
-`agy plugin install` 只 stage **声明式** 内容（`plugin.json` + `skills/`），从不执行 JavaScript，也不动 `settings.json`。HUD 的 statusLine 命令和 renderer runtime 是另一层配置。`install.sh` 把这两件事一起做了。
+`agy plugin install` 只 stage **声明式** plugin marker（`plugin.json`），从不执行 JavaScript，也不动 `settings.json`。HUD 的 statusLine 命令和 renderer runtime 是另一层配置。`install.sh` 把这两件事一起做了。
 
 ### Fork / 镜像
 
@@ -198,7 +198,6 @@ powershell -ExecutionPolicy Bypass -Command "irm https://raw.githubusercontent.c
 agy-hud/
 ├── plugin.json                # {"name":"agy-hud"} — agy plugin marker
 ├── gemini-extension.json      # agy 远程安装验证器强制要求
-├── skills/setup/SKILL.md      # agent 看到的"重跑 bootstrap"手册
 ├── runtime/                   # bootstrap 下载到 ~/.gemini/.../agy-hud-runtime/runtime/
 │   ├── bin/agy-hud.js         # statusLine 入口（stdin JSON → ANSI HUD）
 │   ├── quota.js               # fetchAvailableModels 客户端（与 /usage 对账）

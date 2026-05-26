@@ -4,7 +4,7 @@
 [![Release](https://img.shields.io/github/v/release/icebear0828/agy-hud)](https://github.com/icebear0828/agy-hud/releases/latest)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](#license)
 
-> Real-time statusline HUD plugin for **Antigravity CLI (`agy`)**. Refreshes after every step with session info, token usage, and **real account quota** (matches `/usage` numbers).
+> Real-time statusline HUD plugin for **Antigravity CLI (`agy`)**. Refreshes after every step with session info, detailed token breakdown, workspace context, and **real account quota** (matches `/usage` numbers).
 >
 > CI verifies install + HUD render on **macOS, Linux, Windows** on every push — green badge above means it works.
 
@@ -16,7 +16,8 @@
 
 ```
 AGY-HUD │ ⎇ main │ ❖ Plan: Pro │ ⚡ Steps: 42 │ ✓ Tasks: 3
-⚿ Tokens: 85.2k │ ⛁ Ctx: 85.2k/200.0k [████░░░░░░] │ 🤖 Model: Claude Sonnet 4.6
+⚿ Tokens: 138.4M (in: 6k, out: 202k, cache: 138.2M) │ ⛁ Ctx: 138.2M/1M [████░░░░░░] │ 🤖 Model: Claude Sonnet 4.6
+1 MEMORY.md │ 4 rules │ 1 MCPs │ 5 hooks
   ───────────────────────────────────────────────────────────────────────────
   Gem 3.5 Flash(H) [████░░]  60% ~3h │ Gem 3.5 Flash(M) [████░░]  60% ~3h
   Claude 4.6(Th)   [██████] 100% ~5h │ Claude Opus(Th)  [██████] 100% ~5h
@@ -24,7 +25,8 @@ AGY-HUD │ ⎇ main │ ❖ Plan: Pro │ ⚡ Steps: 42 │ ✓ Tasks: 3
 ```
 
 - **Line 1**: branch, plan, step count, task count
-- **Line 2**: token usage, context window bar, current model
+- **Line 2**: total tokens with input/output/cache breakdown, context window bar, current model
+- **Line 3**: workspace signals — memory/rules files, configured MCP servers, active git hooks
 - **Quota rows**: per-model account quota (matches `/usage` exactly) + reset countdown
 
 ---
@@ -59,7 +61,7 @@ Open a fresh `agy` session — the HUD appears at the bottom of the terminal.
 
 ### Why not a single `agy plugin install`?
 
-`agy plugin install` only stages **declarative** plugin content (`plugin.json` + `skills/`); it never executes JavaScript and never touches `settings.json`. The HUD's statusLine command and renderer runtime are configured separately. `install.sh` does both pieces atomically.
+`agy plugin install` only stages the **declarative** plugin marker (`plugin.json`); it never executes JavaScript and never touches `settings.json`. The HUD's statusLine command and renderer runtime are configured separately. `install.sh` does both pieces atomically.
 
 ### For forks / mirrors
 
@@ -198,7 +200,6 @@ Optional. Create `agy-hud.config.json` at the workspace root to override default
 agy-hud/
 ├── plugin.json                # {"name":"agy-hud"} — agy plugin marker
 ├── gemini-extension.json      # required by agy's remote-install validator
-├── skills/setup/SKILL.md      # agent-facing "re-run bootstrap" runbook
 ├── runtime/                   # downloaded by bootstrap to ~/.gemini/.../agy-hud-runtime/runtime/
 │   ├── bin/agy-hud.js         # statusLine entry (stdin JSON → ANSI HUD)
 │   ├── quota.js               # fetchAvailableModels client (matches /usage)
@@ -210,6 +211,7 @@ agy-hud/
 │   ├── install.ps1            # one-command installer — Windows PowerShell
 │   ├── bootstrap.sh           # repair-only entry (called by install.sh)
 │   ├── bootstrap.js           # actual download + configure logic
+│   ├── configure-utf8.ps1     # optional Windows UTF-8 profile + Git encoding helper
 │   ├── verify-display.js      # E2E: install + bootstrap + PTY-spawn agy + assert HUD
 │   └── diagnose-auth.js
 ├── tests/unit/                # node --test
@@ -220,6 +222,14 @@ agy-hud/
 ---
 
 ## Cross-platform notes
+
+**Windows UTF-8 helper**: If your terminal is on a non-UTF-8 codepage and you want Unicode bars/borders by default, run:
+
+```powershell
+irm https://raw.githubusercontent.com/icebear0828/agy-hud/main/scripts/configure-utf8.ps1 | iex
+```
+
+This appends a guarded UTF-8 encoding block to your PowerShell profile and sets Git's global UTF-8 filename/log options. It is idempotent and safe to re-run. Restart PowerShell after it finishes.
 
 **Windows token refresh**: Antigravity CLI stores OAuth `refresh_token` + `access_token` in Credential Manager (`gemini:antigravity` / `LegacyGeneric:target=gemini:antigravity`). The HUD prefers a short-lived `agy-hud-token.json` mirror in tmp. When the fast path only sees a missing/expired file token, it triggers a detached background read; the next render uses the refreshed token. agy-hud does **not** swap RT for access tokens — if the Credential Manager access token is expired, refresh agy's login first.
 
@@ -261,8 +271,9 @@ CI runs in **no-auth mode**: it asserts the standalone HUD command renders the b
 > If you force Unicode rendering (e.g. by setting `display.unicode: true` in your configuration) while the active codepage is not UTF-8, you may see garbled text or `?` replacement characters.
 >
 > **How to enable beautiful Unicode progress bars and borders on Windows:**
-> 1. **Per Session (Recommended)**: Run `chcp 65001` once in your Command Prompt / PowerShell window before opening `agy`.
-> 2. **System-wide UTF-8 (Permanent)**: 
+> 1. **PowerShell helper (Recommended)**: Run `irm https://raw.githubusercontent.com/icebear0828/agy-hud/main/scripts/configure-utf8.ps1 | iex`, then restart PowerShell.
+> 2. **Per Session**: Run `chcp 65001` once in your Command Prompt / PowerShell window before opening `agy`.
+> 3. **System-wide UTF-8 (Permanent)**:
 >    - Go to Windows Settings -> **Time & language** -> **Language & region** -> **Administrative language settings**.
 >    - Click **Change system locale**.
 >    - Check **"Beta: Use Unicode UTF-8 for worldwide language support"** and restart your computer.
