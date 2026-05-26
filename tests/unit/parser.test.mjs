@@ -39,6 +39,38 @@ test('getSessionState reads the highest transcript step index', async () => {
   }
 });
 
+test('getSessionState detects workspace config metadata correctly', async () => {
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'agy-hud-parser-metadata-'));
+  const originalCwd = process.cwd;
+  process.cwd = () => tempDir;
+
+  try {
+    // 1. Create CLAUDE.md
+    fs.writeFileSync(path.join(tempDir, 'CLAUDE.md'), '# rules');
+
+    // 2. Create rules folders and md files
+    const ruleDir = path.join(tempDir, '.claude', 'rules');
+    fs.mkdirSync(ruleDir, { recursive: true });
+    fs.writeFileSync(path.join(ruleDir, 'rule1.md'), 'content');
+    fs.writeFileSync(path.join(ruleDir, 'rule2.md'), 'content');
+
+    // 3. Create active git hooks
+    const hooksDir = path.join(tempDir, '.git', 'hooks');
+    fs.mkdirSync(hooksDir, { recursive: true });
+    fs.writeFileSync(path.join(hooksDir, 'pre-commit'), 'hook content');
+    fs.writeFileSync(path.join(hooksDir, 'pre-push.sample'), 'sample hook content');
+
+    const state = await getSessionState('missing-transcript.jsonl');
+
+    assert.equal(state.memoryFile, 'CLAUDE.md');
+    assert.equal(state.rulesCount, 2);
+    assert.equal(state.hooksCount, 1);
+  } finally {
+    process.cwd = originalCwd;
+    fs.rmSync(tempDir, { recursive: true, force: true });
+  }
+});
+
 test('getSessionState falls back outside git repositories without stderr noise', () => {
   const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'agy-hud-parser-non-git-'));
   const script = `
@@ -60,5 +92,7 @@ test('getSessionState falls back outside git repositories without stderr noise',
 
   assert.equal(result.status, 0);
   assert.equal(result.stderr, '');
-  assert.deepEqual(JSON.parse(result.stdout), { steps: 0, branch: 'main' });
+  const parsed = JSON.parse(result.stdout);
+  assert.equal(parsed.steps, 0);
+  assert.equal(parsed.branch, 'main');
 });
