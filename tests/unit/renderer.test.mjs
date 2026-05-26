@@ -182,6 +182,11 @@ test('renderHUD should correctly layout quotas in two aligned columns', () => {
   ];
 
   const output = renderHUD(state, agyData, { display: { useNerdFonts: false, unicode: true } }, quotaData);
+  const lines = output.split('\n');
+  const gptLine = lines.find(l => l.includes('GPT-OSS'));
+  assert.ok(gptLine, 'GPT-OSS line must exist');
+  assert.doesNotMatch(gptLine, /│/, 'Odd/last column must not render vertical divider');
+
   // Verify vertical grid lines
   assert.match(output, /───/);
   // Verify simplified names

@@ -434,8 +434,12 @@ function renderHUD(state, agyData, config, quotaData, tierName) {
       const rows = [];
       for (let i = 0; i < cols.length; i += 2) {
         const col1 = cols[i];
-        const col2 = cols[i + 1] || ' '.repeat(columnWidth);
-        rows.push(`  ${col1} ${gray}${glyph.vbar}${reset} ${col2}`);
+        const col2 = cols[i + 1];
+        if (col2) {
+          rows.push(`  ${col1} ${gray}${glyph.vbar}${reset} ${col2}`);
+        } else {
+          rows.push(`  ${col1}`);
+        }
       }
       const dividerLine = `  ${gray}${glyph.hbar.repeat(columnWidth * 2 + 1)}${reset}`;
       quotaLines = `\n${dividerLine}\n` + rows.join('\n') + `\n${dividerLine}`;
