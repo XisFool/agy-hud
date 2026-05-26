@@ -425,9 +425,12 @@ async function fetchTierFromCloud(accessToken) {
         }),
         signal: controller.signal,
       });
-      clearTimeout(timeoutId);
-      if (!r.ok) continue;
+      if (!r.ok) {
+        clearTimeout(timeoutId);
+        continue;
+      }
       const data = await r.json();
+      clearTimeout(timeoutId);
       return extractTierName(data);
     } catch {
       clearTimeout(timeoutId);
@@ -460,12 +463,13 @@ async function fetchQuotaFromCloud(accessToken) {
         body: JSON.stringify({}),
         signal: controller.signal,
       });
-      clearTimeout(timeoutId);
       if (!r.ok) {
+        clearTimeout(timeoutId);
         if (r.status === 401 || r.status === 403) sawAuthFailure = true;
         continue;
       }
       const data = await r.json();
+      clearTimeout(timeoutId);
       const models = data.models || {};
       const interestingModelIds = envModelIds
         || config.interestingModels
@@ -583,8 +587,13 @@ function writeCache(data, tokenOrAccessToken, tier = null) {
       if (t < earliest) earliest = t;
     }
   }
-  // If no resetTime found, cache for 5 minutes
-  const expiresAt = isFinite(earliest) ? earliest : Date.now() + 5 * 60 * 1000;
+  // Cache should not stay "fresh" longer than 2 minutes to ensure we fetch updated quotas frequently,
+  // but it must expire at the earliest resetTime.
+  const maxFreshDuration = 2 * 60 * 1000;
+  let expiresAt = Date.now() + maxFreshDuration;
+  if (isFinite(earliest) && earliest < expiresAt) {
+    expiresAt = earliest;
+  }
   const cacheKeyHash = getTokenCacheKeyHash(tokenOrAccessToken);
   const tokenHash = getTokenHash(tokenOrAccessToken);
   const payload = {

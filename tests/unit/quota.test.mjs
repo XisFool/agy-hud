@@ -540,6 +540,28 @@ test('readCache / writeCache reuses stable token source across access token refr
   } catch {}
 });
 
+test('writeCache limits fresh cache TTL to maximum 2 minutes even with long resetTime', () => {
+  const { writeCache } = quotaModule;
+  const previousCache = fs.existsSync(CACHE_PATH) ? fs.readFileSync(CACHE_PATH, 'utf8') : null;
+  try {
+    const longResetTime = new Date(Date.now() + 3600 * 1000).toISOString(); // 1 hour later
+    const mockData = [{ id: 'gemini-3.5-flash-low', remainingFraction: 0.5, resetTime: longResetTime }];
+
+    writeCache(mockData, {
+      accessToken: 'test-token',
+    });
+
+    const raw = JSON.parse(fs.readFileSync(CACHE_PATH, 'utf8'));
+    const maxAllowedExpiry = Date.now() + 2 * 60 * 1000 + 5000; // 2m + 5s buffer
+    const minAllowedExpiry = Date.now() + 2 * 60 * 1000 - 5000;
+    assert.ok(raw.expiresAt >= minAllowedExpiry && raw.expiresAt <= maxAllowedExpiry, `expiresAt ${raw.expiresAt} must be close to 2 minutes from now`);
+  } finally {
+    if (previousCache === null) fs.rmSync(CACHE_PATH, { force: true });
+    else fs.writeFileSync(CACHE_PATH, previousCache);
+  }
+});
+
+
 test('fetchQuotaFromCloud respects AGY_HUD_ENDPOINTS and AGY_HUD_INTERESTING_MODELS env overrides', async () => {
   const originalFetch = globalThis.fetch;
   const requestedUrls = [];
