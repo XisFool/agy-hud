@@ -204,7 +204,7 @@ test('renderHUD should explain when quota is unavailable because auth is missing
     enumerable: false
   });
 
-  const output = renderHUD(state, agyData, { display: { useNerdFonts: false } }, quotaData);
+  const output = renderHUD(state, agyData, { language: 'en', display: { useNerdFonts: false } }, quotaData);
 
   assert.match(output, /Quota unavailable/);
   assert.match(output, /not logged into Antigravity/);
@@ -232,17 +232,34 @@ test('renderHUD should explain quota fetch and auth failures', () => {
   });
 
   assert.match(
-    renderHUD(state, agyData, { display: { useNerdFonts: false } }, expiredToken),
+    renderHUD(state, agyData, { language: 'en', display: { useNerdFonts: false } }, expiredToken),
     /Antigravity token expired/
   );
   assert.match(
-    renderHUD(state, agyData, { display: { useNerdFonts: false } }, authFailed),
+    renderHUD(state, agyData, { language: 'en', display: { useNerdFonts: false } }, authFailed),
     /Antigravity auth failed/
   );
   assert.match(
-    renderHUD(state, agyData, { display: { useNerdFonts: false } }, fetchFailed),
+    renderHUD(state, agyData, { language: 'en', display: { useNerdFonts: false } }, fetchFailed),
     /quota fetch failed/
   );
+});
+
+test('renderHUD localizes quota diagnostics when language is zh', () => {
+  const state = { steps: 0, branch: 'main' };
+  const agyData = {
+    context_window: { total_input_tokens: 1000, total_output_tokens: 200, used_percentage: 5 }
+  };
+  const quotaData = [];
+  Object.defineProperty(quotaData, 'unavailableReason', {
+    value: 'not_logged_in',
+    enumerable: false
+  });
+
+  const output = renderHUD(state, agyData, { language: 'zh', display: { useNerdFonts: false } }, quotaData);
+
+  assert.match(output, /额度不可用/);
+  assert.match(output, /未登录 Antigravity/);
 });
 
 test('renderHUD falls back to ASCII when config.display.unicode is false', () => {
@@ -341,6 +358,59 @@ test('renderHUD supports custom columnWidth', () => {
   assert.match(output, /Gemini 3\.5 Flash\(H\) {5}/);
 });
 
+test('renderHUD respects display visibility toggles', () => {
+  const state = {
+    steps: 5,
+    branch: 'main',
+    memoryFile: 'GEMINI.md',
+    rulesCount: 2,
+    hooksCount: 1
+  };
+  const agyData = {
+    context_window: { total_input_tokens: 1000, total_output_tokens: 200, used_percentage: 5 },
+    model: { display_name: 'Gemini 3.5 Flash (High)' }
+  };
+
+  const output = renderHUD(state, agyData, {
+    display: {
+      showGitBranch: false,
+      showTokenBar: false,
+      showBreadcrumbs: false,
+      unicode: false
+    }
+  });
+
+  assert.doesNotMatch(output, /\[B\] main/);
+  assert.doesNotMatch(output, /\[Tk\]/);
+  assert.doesNotMatch(output, /GEMINI\.md/);
+  assert.match(output, /Gemini 3\.5 Flash\(H\)/);
+  assert.match(output, /\[C\] 1k\/0/);
+  assert.match(output, /2 rules/);
+  assert.match(output, /1 hooks/);
+});
+
+test('renderHUD limits breadcrumb metadata by breadcrumbCount', () => {
+  const state = {
+    steps: 1,
+    branch: 'main',
+    breadcrumbs: ['README.md', 'runtime/renderer.js', 'tests/unit/renderer.test.mjs'],
+  };
+  const agyData = {
+    context_window: { total_input_tokens: 0, total_output_tokens: 0, used_percentage: 0 }
+  };
+
+  const output = renderHUD(state, agyData, {
+    display: {
+      breadcrumbCount: 2,
+      unicode: false
+    }
+  });
+
+  assert.doesNotMatch(output, /README\.md/);
+  assert.match(output, /runtime\/renderer\.js/);
+  assert.match(output, /tests\/unit\/renderer\.test\.mjs/);
+});
+
 test('abbreviateDisplayName handles all known agent model patterns', () => {
   assert.equal(abbreviateDisplayName('Gemini 3.5 Flash (High)'), 'Gemini 3.5 Flash(H)');
   assert.equal(abbreviateDisplayName('Gemini 3.5 Flash (Medium)'), 'Gemini 3.5 Flash(M)');
@@ -391,6 +461,24 @@ test('renderHUD compact mode appends current model quota to line 2', () => {
   assert.doesNotMatch(output, /─{10}/);
 });
 
+test('renderHUD compact mode matches current model despite display suffix drift', () => {
+  const state = { steps: 5, branch: 'dev' };
+  const agyData = {
+    context_window: { total_input_tokens: 1000, total_output_tokens: 200, used_percentage: 5 },
+    model: {
+      id: 'gemini-3-flash-agent',
+      display_name: 'Gemini 3.5 Flash (High) Preview'
+    }
+  };
+  const quotaData = [
+    { id: 'gemini-3-flash-agent', displayName: 'Gemini 3.5 Flash (High)', modelProvider: 'MODEL_PROVIDER_GOOGLE', remainingFraction: 0.5, resetTime: null },
+  ];
+
+  const output = renderHUD(state, agyData, { display: { quotaStyle: 'compact', unicode: false } }, quotaData);
+
+  assert.match(output, /Quota: 50%/);
+});
+
 test('renderHUD compact mode renders provider-grouped mini bars', () => {
   const state = { steps: 1, branch: 'main' };
   const agyData = {
@@ -433,11 +521,11 @@ test('renderHUD shows loading state when quotaData is empty array without reason
     context_window: { total_input_tokens: 1000, total_output_tokens: 200, used_percentage: 5 }
   };
 
-  const outputUnicode = renderHUD(state, agyData, { display: { unicode: true } }, []);
+  const outputUnicode = renderHUD(state, agyData, { language: 'en', display: { unicode: true } }, []);
   assert.match(outputUnicode, /Quota loading…/);
   assert.match(outputUnicode, /─+/);
 
-  const outputAscii = renderHUD(state, agyData, { display: { unicode: false } }, []);
+  const outputAscii = renderHUD(state, agyData, { language: 'en', display: { unicode: false } }, []);
   assert.match(outputAscii, /Quota loading\.\.\./);
 });
 

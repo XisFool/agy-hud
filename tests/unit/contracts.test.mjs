@@ -75,6 +75,34 @@ test('configure-utf8 script fails loudly and is covered by Windows CI', () => {
   assert.match(workflow, /AGY_HUD_PROFILE_PATH/);
 });
 
+test('release script prints valid GitHub release install URLs', () => {
+  const releaseScript = readText('release.sh');
+
+  assert.match(releaseScript, /replace\(\/\\\.git\$\/,\s*''\)/);
+  assert.doesNotMatch(releaseScript, /replace\(\/\\\.git\\\$\/,\s*''\)/);
+});
+
+test('Windows installer fails loudly when native plugin install fails', () => {
+  const installScript = readText('scripts/install.ps1');
+  const installIndex = installScript.indexOf('agy plugin install $RepoUrl');
+  const bootstrapIndex = installScript.indexOf('$BootstrapUrl');
+
+  assert.notEqual(installIndex, -1);
+  assert.notEqual(bootstrapIndex, -1);
+  assert.match(
+    installScript.slice(installIndex, bootstrapIndex),
+    /\$LASTEXITCODE\s+-ne\s+0/
+  );
+});
+
+test('Windows uninstaller falls back when plugin uninstall fails', () => {
+  const uninstallScript = readText('uninstall.ps1');
+
+  assert.match(uninstallScript, /\$PluginDir\s*=/);
+  assert.match(uninstallScript, /Remove-Item\s+\$PluginDir/);
+  assert.match(uninstallScript, /\$LASTEXITCODE\s+-ne\s+0/);
+});
+
 test('release package contract does not ship agent skills', () => {
   const packageJson = readJson('package.json');
   const releaseScript = readText('release.sh');

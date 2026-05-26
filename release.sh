@@ -7,7 +7,7 @@ VERSION=$(node -e "console.log(require('./package.json').version)")
 REPO_URL=$(node -e "
   const r = require('./package.json').repository;
   if (!r || !r.url) { console.error('package.json missing repository.url'); process.exit(1); }
-  console.log(r.url.replace(/^git\+/, '').replace(/\.git\$/, ''));
+  console.log(r.url.replace(/^git\+/, '').replace(/\.git$/, ''));
 ")
 echo "📦 Preparing release v$VERSION..."
 

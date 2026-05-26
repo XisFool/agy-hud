@@ -58,11 +58,56 @@ function compactModelName(displayName) {
   return displayName.slice(0, 6);
 }
 
+function normalizeModelMatchValue(value) {
+  if (!value) return '';
+  return simplifyModelName(value)
+    .replace(/\s+(preview|experimental|beta|latest)$/i, '')
+    .trim()
+    .toLowerCase();
+}
+
+function modelNamesMatch(left, right) {
+  const a = normalizeModelMatchValue(left);
+  const b = normalizeModelMatchValue(right);
+  if (!a || !b) return false;
+  return a === b || a.startsWith(`${b} `) || b.startsWith(`${a} `);
+}
+
 const PROVIDER_LABELS = {
   MODEL_PROVIDER_GOOGLE: 'Google',
   MODEL_PROVIDER_ANTHROPIC: 'Anthropic',
   MODEL_PROVIDER_OPENAI: 'OpenAI',
 };
+
+const LANGUAGE_TEXT = {
+  en: {
+    quotaUnavailable: 'Quota unavailable',
+    quotaLoading: 'Quota loading',
+    quotaReasons: {
+      not_logged_in: 'not logged into Antigravity',
+      expired_token: 'Antigravity token expired',
+      auth_failed: 'Antigravity auth failed',
+      quota_fetch_failed: 'quota fetch failed',
+    },
+  },
+  zh: {
+    quotaUnavailable: '额度不可用',
+    quotaLoading: '额度加载中',
+    quotaReasons: {
+      not_logged_in: '未登录 Antigravity',
+      expired_token: 'Antigravity token 已过期',
+      auth_failed: 'Antigravity 认证失败',
+      quota_fetch_failed: '额度获取失败',
+    },
+  },
+};
+
+function resolveLanguage(config, env = process.env) {
+  const language = config?.language;
+  if (language === 'en' || language === 'zh') return language;
+  const locale = env.LC_ALL || env.LC_CTYPE || env.LANG || '';
+  return /^zh(?:_|-|$)/i.test(locale) ? 'zh' : 'en';
+}
 
 /**
  * Renders the HUD string for the status line using native ANSI escape codes.
@@ -76,10 +121,15 @@ const PROVIDER_LABELS = {
  * @returns {string}
  */
 function renderHUD(state, agyData, config, quotaData, tierName) {
-  const useNerd = config?.display?.useNerdFonts === true;
-  const unicode = typeof config?.display?.unicode === 'boolean'
-    ? config.display.unicode
+  const display = config?.display || {};
+  const useNerd = display.useNerdFonts === true;
+  const unicode = typeof display.unicode === 'boolean'
+    ? display.unicode
     : supportsUnicode();
+  const showGitBranch = display.showGitBranch !== false;
+  const showTokenBar = display.showTokenBar !== false;
+  const showBreadcrumbs = display.showBreadcrumbs !== false;
+  const text = LANGUAGE_TEXT[resolveLanguage(config)];
 
   // ANSI escape sequences
   const reset = '\x1b[0m';
@@ -110,8 +160,8 @@ function renderHUD(state, agyData, config, quotaData, tierName) {
     ? config.thresholds.critical
     : DEFAULT_THRESHOLDS.critical;
 
-  const columnWidth = typeof config?.display?.columnWidth === 'number'
-    ? config.display.columnWidth
+  const columnWidth = typeof display.columnWidth === 'number'
+    ? display.columnWidth
     : DEFAULT_COLUMN_WIDTH;
   const nameWidth = Math.max(10, columnWidth - QUOTA_CHROME_WIDTH);
 
@@ -227,11 +277,12 @@ function renderHUD(state, agyData, config, quotaData, tierName) {
   const divider = ` ${gray}${glyph.vbar}${reset} `;
 
   // Layer 1: identity + status
-  const line1 = [
-    branchName,
+  const line1Parts = [
     `${green}${modelName}${reset}`,
     `${magenta}${plan}${reset}`,
-  ].join(divider);
+  ];
+  if (showGitBranch) line1Parts.unshift(branchName);
+  const line1 = line1Parts.join(divider);
 
   const firstNumber = (...values) => values.find(value => Number.isFinite(value));
   const agyCurrentUsage = usage.current_usage || {};
@@ -261,21 +312,27 @@ function renderHUD(state, agyData, config, quotaData, tierName) {
   const ctxPctStr = `${Math.round(ctxPercent)}%`;
   const ctxStr = `${cyan}${ctxIcon}${formatTokens(totalInput)}/${formatTokens(usage.context_window_size || 0)}${reset} ${ctxBar} ${cyan}${ctxPctStr}${reset}`;
 
-  const quotaStyle = config?.display?.quotaStyle || 'table';
+  const quotaStyle = display.quotaStyle || 'table';
   const isCompact = quotaStyle === 'compact';
 
   // In compact mode, find current model's quota and append to line 2
   let currentModelQuota = null;
   if (isCompact && quotaData && quotaData.length > 0) {
     const rawName = agyData?.model?.display_name || '';
+    const modelId = agyData?.model?.id || '';
     currentModelQuota = quotaData.find(q =>
-      q.displayName === rawName || simplifyModelName(q.displayName) === modelName
+      (modelId && q.id === modelId) ||
+      q.displayName === rawName ||
+      simplifyModelName(q.displayName) === modelName ||
+      modelNamesMatch(q.displayName, rawName)
     );
   }
 
   // Layer 2: resource consumption + compact steps/tasks
   const stepsTasksStr = `${yellow}${stepIcon}${state.steps}${reset} ${yellow}${taskIcon}${tasks}${reset}`;
-  const line2Parts = [tokensStr, ctxStr, stepsTasksStr];
+  const line2Parts = [];
+  if (showTokenBar) line2Parts.push(tokensStr);
+  line2Parts.push(ctxStr, stepsTasksStr);
   if (isCompact && currentModelQuota) {
     const pct = Math.round(currentModelQuota.remainingFraction * 100);
     const pctColor = pct <= (1 - critThresh) * 100 ? red : pct <= (1 - warnThresh) * 100 ? yellow : green;
@@ -290,7 +347,18 @@ function renderHUD(state, agyData, config, quotaData, tierName) {
 
   // Layer 3: project metadata (non-zero items only)
   const metaParts = [];
-  if (state.memoryFile) metaParts.push(`${gray}1 ${state.memoryFile}${reset}`);
+  const breadcrumbCount = typeof display.breadcrumbCount === 'number'
+    ? Math.max(0, Math.floor(display.breadcrumbCount))
+    : 3;
+  if (showBreadcrumbs && breadcrumbCount > 0) {
+    if (Array.isArray(state.breadcrumbs) && state.breadcrumbs.length > 0) {
+      for (const item of state.breadcrumbs.filter(Boolean).slice(-breadcrumbCount)) {
+        metaParts.push(`${gray}${item}${reset}`);
+      }
+    } else if (state.memoryFile) {
+      metaParts.push(`${gray}1 ${state.memoryFile}${reset}`);
+    }
+  }
   const rulesCount = state.rulesCount || 0;
   const mcpCount = state.mcpCount || 0;
   const hooksCount = state.hooksCount || 0;
@@ -371,17 +439,11 @@ function renderHUD(state, agyData, config, quotaData, tierName) {
     }
   } else if (quotaData && quotaData.unavailableReason) {
     const dividerLine = `  ${gray}${glyph.hbar.repeat(columnWidth * 2 + 1)}${reset}`;
-    const reasonMessages = {
-      not_logged_in: 'not logged into Antigravity',
-      expired_token: 'Antigravity token expired',
-      auth_failed: 'Antigravity auth failed',
-      quota_fetch_failed: 'quota fetch failed',
-    };
-    const reason = reasonMessages[quotaData.unavailableReason] || quotaData.unavailableReason;
-    quotaLines = `\n${dividerLine}\n  ${yellow}Quota unavailable:${reset} ${gray}${reason}${reset}\n${dividerLine}`;
+    const reason = text.quotaReasons[quotaData.unavailableReason] || quotaData.unavailableReason;
+    quotaLines = `\n${dividerLine}\n  ${yellow}${text.quotaUnavailable}:${reset} ${gray}${reason}${reset}\n${dividerLine}`;
   } else if (quotaData && quotaData.length === 0) {
     const dividerLine = `  ${gray}${glyph.hbar.repeat(columnWidth * 2 + 1)}${reset}`;
-    quotaLines = `\n${dividerLine}\n  ${gray}Quota loading${glyph.ellipsis}${reset}\n${dividerLine}`;
+    quotaLines = `\n${dividerLine}\n  ${gray}${text.quotaLoading}${glyph.ellipsis}${reset}\n${dividerLine}`;
   }
 
   const lines = [line1, line2];

@@ -32,6 +32,7 @@ try { agy plugin uninstall agy-hud 2>$null } catch {}
 
 Write-Host "==> Installing plugin from $RepoUrl..."
 agy plugin install $RepoUrl
+if ($LASTEXITCODE -ne 0) { throw "agy plugin install exited with code $LASTEXITCODE" }
 
 # Step 2: download bootstrap.js to temp, run with node
 Write-Host ""
