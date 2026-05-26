@@ -71,6 +71,99 @@ test('getSessionState detects workspace config metadata correctly', async () => 
   }
 });
 
+test('getSessionState reads project memory from HOME without counting memory docs as rules', () => {
+  const workspaceDir = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'agy-hud-parser-home-workspace-')));
+  const homeDir = fs.mkdtempSync(path.join(os.tmpdir(), 'agy-hud-parser-home-'));
+  const normalizedCwd = workspaceDir.replace(/\\/g, '/');
+  const projectKey = normalizedCwd.replace(/\//g, '-');
+  const projectMemoryDir = path.join(homeDir, '.claude', 'projects', projectKey, 'memory');
+  const ruleDir = path.join(workspaceDir, '.claude', 'rules');
+
+  try {
+    fs.mkdirSync(projectMemoryDir, { recursive: true });
+    fs.writeFileSync(path.join(projectMemoryDir, 'MEMORY.md'), '# memory');
+    fs.writeFileSync(path.join(projectMemoryDir, 'feedback.md'), '# feedback');
+    fs.mkdirSync(ruleDir, { recursive: true });
+    fs.writeFileSync(path.join(ruleDir, 'rule.md'), '# rule');
+
+    const script = `
+      process.chdir(${JSON.stringify(workspaceDir)});
+      const { getSessionState } = require(${JSON.stringify(path.join(projectRoot, 'runtime', 'parser.js'))});
+      getSessionState('missing-transcript.jsonl')
+        .then(state => process.stdout.write(JSON.stringify(state)));
+    `;
+
+    const env = { ...process.env, HOME: homeDir, USERPROFILE: homeDir };
+    delete env.GIT_DIR;
+    delete env.GIT_WORK_TREE;
+
+    const result = spawnSync(process.execPath, ['-e', script], {
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'pipe'],
+      env,
+    });
+
+    assert.equal(result.status, 0);
+    assert.equal(result.stderr, '');
+    const parsed = JSON.parse(result.stdout);
+    assert.equal(parsed.memoryFile, 'MEMORY.md');
+    assert.equal(parsed.rulesCount, 1);
+  } finally {
+    fs.rmSync(workspaceDir, { recursive: true, force: true });
+    fs.rmSync(homeDir, { recursive: true, force: true });
+  }
+});
+
+test('getSessionState counts git hooks from subdirectories', () => {
+  const repoDir = fs.mkdtempSync(path.join(os.tmpdir(), 'agy-hud-parser-hooks-'));
+  const nestedDir = path.join(repoDir, 'nested');
+
+  try {
+    const init = spawnSync('git', ['init'], {
+      cwd: repoDir,
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
+    assert.equal(init.status, 0, init.stderr);
+
+    const hooksPathResult = spawnSync('git', ['rev-parse', '--git-path', 'hooks'], {
+      cwd: repoDir,
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
+    assert.equal(hooksPathResult.status, 0, hooksPathResult.stderr);
+    const hooksDir = path.resolve(repoDir, hooksPathResult.stdout.trim());
+    fs.mkdirSync(hooksDir, { recursive: true });
+    fs.writeFileSync(path.join(hooksDir, 'pre-commit'), 'hook');
+    fs.writeFileSync(path.join(hooksDir, 'pre-push.sample'), 'sample');
+
+    fs.mkdirSync(nestedDir, { recursive: true });
+    const script = `
+      process.chdir(${JSON.stringify(nestedDir)});
+      const { getSessionState } = require(${JSON.stringify(path.join(projectRoot, 'runtime', 'parser.js'))});
+      getSessionState('missing-transcript.jsonl')
+        .then(state => process.stdout.write(JSON.stringify(state)));
+    `;
+
+    const env = { ...process.env };
+    delete env.GIT_DIR;
+    delete env.GIT_WORK_TREE;
+
+    const result = spawnSync(process.execPath, ['-e', script], {
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'pipe'],
+      env,
+    });
+
+    assert.equal(result.status, 0);
+    assert.equal(result.stderr, '');
+    const parsed = JSON.parse(result.stdout);
+    assert.equal(parsed.hooksCount, 1);
+  } finally {
+    fs.rmSync(repoDir, { recursive: true, force: true });
+  }
+});
+
 test('getSessionState falls back outside git repositories without stderr noise', () => {
   const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'agy-hud-parser-non-git-'));
   const script = `

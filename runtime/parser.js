@@ -13,6 +13,7 @@ const { resolveSafeExecutable, resolveAntigravityPath } = require('./paths.js');
 async function getSessionState(transcriptPath) {
   let steps = 0;
   let branch = 'main';
+  let gitPath = null;
 
   try {
     const fileContent = fs.readFileSync(transcriptPath, 'utf8');
@@ -32,11 +33,12 @@ async function getSessionState(transcriptPath) {
   }
 
   try {
-    const gitPath = resolveSafeExecutable('git');
+    gitPath = resolveSafeExecutable('git');
     if (gitPath) {
       const gitBranch = execFileSync(gitPath, ['rev-parse', '--abbrev-ref', 'HEAD'], {
         encoding: 'utf8',
         stdio: ['ignore', 'pipe', 'ignore'],
+        cwd: process.cwd(),
       }).trim();
       branch = gitBranch;
     }
@@ -47,6 +49,7 @@ async function getSessionState(transcriptPath) {
   const cwd = process.cwd();
   const normalizedCwd = cwd.replace(/\\/g, '/');
   const projectKey = normalizedCwd.replace(/\//g, '-');
+  const projectMemoryDir = path.join(os.homedir(), '.claude', 'projects', projectKey, 'memory');
 
   // Detect memory files
   let memoryFile;
@@ -55,7 +58,7 @@ async function getSessionState(transcriptPath) {
   } else if (fs.existsSync(path.join(cwd, 'MEMORY.md'))) {
     memoryFile = 'MEMORY.md';
   } else {
-    const projectMemoryPath = `/Users/c/.claude/projects/${projectKey}/memory/MEMORY.md`;
+    const projectMemoryPath = path.join(projectMemoryDir, 'MEMORY.md');
     if (fs.existsSync(projectMemoryPath)) {
       memoryFile = 'MEMORY.md';
     }
@@ -63,14 +66,6 @@ async function getSessionState(transcriptPath) {
 
   // Count rules
   let rulesCount = 0;
-  const projectMemoryDir = `/Users/c/.claude/projects/${projectKey}/memory`;
-  if (fs.existsSync(projectMemoryDir)) {
-    try {
-      const files = fs.readdirSync(projectMemoryDir);
-      const mdRules = files.filter(f => f.endsWith('.md') && f.toLowerCase() !== 'memory.md');
-      rulesCount += mdRules.length;
-    } catch {}
-  }
   const ruleDirs = [
     path.join(cwd, '.claude', 'rules'),
     path.join(cwd, '.cursor', 'rules'),
@@ -88,13 +83,25 @@ async function getSessionState(transcriptPath) {
 
   // Count git hooks
   let hooksCount = 0;
-  const hooksDir = path.join(cwd, '.git', 'hooks');
+  let hooksDir = path.join(cwd, '.git', 'hooks');
+  if (gitPath) {
+    try {
+      const gitHooksPath = execFileSync(gitPath, ['rev-parse', '--git-path', 'hooks'], {
+        encoding: 'utf8',
+        stdio: ['ignore', 'pipe', 'ignore'],
+        cwd,
+      }).trim();
+      hooksDir = path.isAbsolute(gitHooksPath)
+        ? gitHooksPath
+        : path.resolve(cwd, gitHooksPath);
+    } catch {}
+  }
   if (fs.existsSync(hooksDir)) {
     try {
       const files = fs.readdirSync(hooksDir);
       const activeHooks = files.filter(f => {
-        return !f.endsWith('.sample') && 
-               !f.endsWith('.disabled') && 
+        return !f.endsWith('.sample') &&
+               !f.endsWith('.disabled') &&
                fs.statSync(path.join(hooksDir, f)).isFile();
       });
       hooksCount = activeHooks.length;
