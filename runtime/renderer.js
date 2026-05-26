@@ -304,9 +304,12 @@ function renderHUD(state, agyData, config, quotaData, tierName) {
   const outTokens = totalOutput;
   const tokenTotal = inTokens + outTokens + cacheRead;
 
-  // Compact token format: ⚿ 150k ↑127k ↓23k [⟳Xk]
-  let tokenParts = `${formatTokens(tokenTotal)} ${inArrow}${formatTokens(inTokens)} ${outArrow}${formatTokens(outTokens)}`;
-  if (cacheRead > 0) tokenParts += ` ${cacheArrow}${formatTokens(cacheRead)}`;
+  // Compact token format: ⚿ 150k (↑127k ↓23k [⟳Xk])
+  const detailParts = [`${inArrow}${formatTokens(inTokens)}`, `${outArrow}${formatTokens(outTokens)}`];
+  if (cacheRead > 0) {
+    detailParts.push(`${cacheArrow}${formatTokens(cacheRead)}`);
+  }
+  const tokenParts = `${formatTokens(tokenTotal)} ${gray}(${reset}${detailParts.join(' ')}${gray})${reset}`;
   const tokensStr = `${cyan}${tokenIcon}${tokenParts}${reset}`;
   const ctxBar = createProgressBar(ctxPercent, cyan, 10, true);
   const ctxPctStr = `${Math.round(ctxPercent)}%`;
