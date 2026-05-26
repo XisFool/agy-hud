@@ -43,6 +43,17 @@ test('renderHUD preserves model name suffixes when applying display aliases', ()
   );
 
   assert.match(output, /Gem 3\.5 Flash\(H\) Preview/);
+
+  const outputLow = renderHUD(
+    { steps: 1, branch: 'main' },
+    {
+      context_window: { total_input_tokens: 0, total_output_tokens: 0, used_percentage: 0 },
+      model: { display_name: 'Gemini 3.5 Flash (Low)' }
+    },
+    { display: { useNerdFonts: false, unicode: false } }
+  );
+
+  assert.match(outputLow, /Gem 3\.5 Flash\(L\)/);
 });
 
 test('renderHUD should correctly layout quotas in two aligned columns', () => {
@@ -61,7 +72,7 @@ test('renderHUD should correctly layout quotas in two aligned columns', () => {
   assert.match(output, /───/);
   // Verify simplified names
   assert.match(output, /Gem 3.5 Flash\(H\)/);
-  assert.match(output, /Claude 4.6\(Th\)/);
+  assert.match(output, /Sonnet 4.6\(Th\)/);
   assert.match(output, /GPT-OSS 120B/);
   // Verify reset times
   assert.match(output, /~14m/);

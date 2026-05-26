@@ -23,10 +23,11 @@ const QUOTA_CHROME_WIDTH = 21;
 const MODEL_DISPLAY_ALIASES = {
   'Gemini 3.5 Flash (High)': 'Gem 3.5 Flash(H)',
   'Gemini 3.5 Flash (Medium)': 'Gem 3.5 Flash(M)',
+  'Gemini 3.5 Flash (Low)': 'Gem 3.5 Flash(L)',
   'Gemini 3.1 Pro (High)': 'Gem 3.1 Pro(H)',
   'Gemini 3.1 Pro (Low)': 'Gem 3.1 Pro(L)',
-  'Claude Sonnet 4.6 (Thinking)': 'Claude 4.6(Th)',
-  'Claude Opus 4.6 (Thinking)': 'Claude Opus(Th)',
+  'Claude Sonnet 4.6 (Thinking)': 'Sonnet 4.6(Th)',
+  'Claude Opus 4.6 (Thinking)': 'Opus 4.6(Th)',
   'GPT-OSS 120B (Medium)': 'GPT-OSS 120B',
 };
 

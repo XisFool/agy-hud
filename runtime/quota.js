@@ -74,6 +74,7 @@ const DEFAULT_ENDPOINTS = [
 const DEFAULT_INTERESTING_MODEL_IDS = [
   'gemini-3-flash-agent',    // Gemini 3.5 Flash (High)
   'gemini-3.5-flash-low',    // Gemini 3.5 Flash (Medium)
+  'gemini-3.5-flash-extra-low', // Gemini 3.5 Flash (Low)
   'gemini-3.1-pro-high',     // Gemini 3.1 Pro (High)
   'gemini-3.1-pro-low',      // Gemini 3.1 Pro (Low)
   'claude-sonnet-4-6',       // Claude Sonnet 4.6
