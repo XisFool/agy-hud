@@ -14,8 +14,8 @@ echo "📦 Preparing release v$VERSION..."
 # 1. Run tests
 npm test
 
-# 2. E2E gate: agy plugin install + bootstrap + spawn agy in PTY + assert AGY-HUD
-#    rendered in real session. mock unit-test green ≠ E2E green (CLAUDE.md rule).
+# 2. E2E gate: agy plugin install + bootstrap + spawn agy in PTY + assert the
+#    HUD structure rendered in real session. mock unit-test green ≠ E2E green (CLAUDE.md rule).
 #    Skip only with SKIP_E2E=1 for emergency hotfixes — never silently.
 if [ "$SKIP_E2E" != "1" ]; then
   echo "🧪 Running E2E verify-display..."
@@ -43,7 +43,7 @@ if [ "$SKIP_E2E" != "1" ]; then
     tail -40 /tmp/release-e2e.json
     exit 1
   fi
-  echo "✅ E2E green: AGY-HUD rendered in real agy session"
+  echo "✅ E2E green: HUD rendered in real agy session"
 else
   echo "⚠️  SKIP_E2E=1 set — E2E gate bypassed. Verify on real device before declaring live."
 fi

@@ -60,6 +60,21 @@ test('CI uses reproducible install and scheduled agy drift checks', () => {
   assert.doesNotMatch(workflow, /npm install/);
 });
 
+test('CI E2E detection follows the current brandless HUD layout', () => {
+  const releaseScript = readText('release.sh');
+  const workflow = readText('.github/workflows/e2e.yml');
+  const verifyDisplay = readText('scripts/verify-display.js');
+
+  assert.doesNotMatch(releaseScript, /assert AGY-HUD/);
+  assert.doesNotMatch(releaseScript, /AGY-HUD rendered/);
+  assert.doesNotMatch(workflow, /AGY-HUD banner/);
+  assert.doesNotMatch(verifyDisplay, /AGY-HUD banner/);
+  assert.doesNotMatch(verifyDisplay, /literal AGY-HUD/);
+  assert.doesNotMatch(verifyDisplay, /includes\('AGY-HUD'\)/);
+  assert.doesNotMatch(verifyDisplay, /\/AGY-HUD\//);
+  assert.match(verifyDisplay, /detectHudRender/);
+});
+
 test('configure-utf8 script fails loudly and is covered by Windows CI', () => {
   const script = readText('scripts/configure-utf8.ps1');
   const workflow = readText('.github/workflows/e2e.yml');

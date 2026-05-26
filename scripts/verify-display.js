@@ -5,7 +5,7 @@ const fs = require('fs');
 const http = require('http');
 const os = require('os');
 const path = require('path');
-const { execFileSync, spawn, spawnSync } = require('child_process');
+const { execFileSync, spawn } = require('child_process');
 
 const projectRoot = path.resolve(__dirname, '..');
 const zipPath = path.join(projectRoot, 'agy-hud.zip');
@@ -15,7 +15,23 @@ const timeoutArg = process.argv.find(arg => arg.startsWith('--observe-timeout-ms
 const observeTimeoutMs = timeoutArg ? Number(timeoutArg.split('=')[1]) : 12_000;
 
 function stripAnsi(value) {
-  return value.replace(/\x1b\[[0-9;?]*[A-Za-z]/g, '');
+  return value
+    .replace(/\x1b\][^\x07]*(?:\x07|\x1b\\)/g, '')
+    .replace(/\x1b\[[0-?]*[ -/]*[@-~]/g, '');
+}
+
+function detectHudRender(...values) {
+  return values
+    .filter(value => typeof value === 'string' && value.trim())
+    .some(value => {
+      const plain = stripAnsi(value);
+      const hasBranch = /(?:⎇||\[B\])\s*\S+/.test(plain);
+      const hasContext = /(?:⛁|󱔐|\[C\])\s*\d+(?:\.\d+)?[kM]?\/\d+(?:\.\d+)?[kM]?/i.test(plain);
+      const hasSteps = /(?:⚡||\[S\])\s*\d+/.test(plain);
+      const hasTokenBreakdown = /(?:⚿|󰚩|\[Tk\])\s*\d+(?:\.\d+)?[kM]?\s*(?:↑|\^)\s*\d+/i.test(plain);
+
+      return hasBranch && hasContext && hasSteps && hasTokenBreakdown;
+    });
 }
 
 function renderTerminalScreen(value, width = 160) {
@@ -44,7 +60,7 @@ function renderTerminalScreen(value, width = 160) {
       }
 
       if (value[i + 1] === '[') {
-        const match = value.slice(i).match(/^\x1b\[([0-9;?]*)([A-Za-z])/);
+        const match = value.slice(i).match(/^\x1b\[([0-9;?]*)(?:[ -/]*)([@-~])/);
         if (match) {
           const params = match[1].replace(/\?/g, '').split(';').filter(Boolean).map(Number);
           const command = match[2];
@@ -292,7 +308,7 @@ function observeLocalAgy(env) {
   });
 }
 
-(async () => {
+async function main() {
   // Skip the zip build when caller already did it (e.g. release.sh's E2E
   // gate). Without this, release.sh → verify-display.js → release.sh =
   // infinite recursion.
@@ -348,8 +364,8 @@ function observeLocalAgy(env) {
     }
 
     // No-auth mode (CI): skip the agy-session PTY spawn (needs OAuth) and
-    // directly invoke the configured statusLine command, asserting AGY-HUD
-    // banner. Catches install/bootstrap/runtime issues — the auth-required
+    // directly invoke the configured statusLine command. Catches install,
+    // bootstrap, and standalone runtime rendering issues; the auth-required
     // "HUD visible inside live agy session" check stays in dev / release.sh.
     let observation;
     if (noAuthMode) {
@@ -373,13 +389,8 @@ function observeLocalAgy(env) {
     const observedPlain = stripAnsi(observedRaw);
     const observedScreen = renderTerminalScreen(observedRaw);
     const afterObserve = readInstallState(env);
-    // Robust HUD presence check: agy emits cursor-positioning ANSI like `\x1b[5\``
-    // (HPA = horizontal position absolute) that our stripAnsi regex doesn't
-    // strip and the screen renderer collapses. The most reliable signal is
-    // "literal AGY-HUD bytes appeared in the PTY stream at all".
-    const hudInRaw = observedRaw.includes('AGY-HUD');
-    const hudVisible = hudInRaw || /AGY-HUD/.test(observedScreen);
-    const streamHudPresent = hudInRaw || /AGY-HUD/.test(observedPlain);
+    const hudVisible = detectHudRender(observedRaw, observedScreen, observedPlain);
+    const streamHudPresent = detectHudRender(observedRaw, observedPlain);
     const statusLineReady = Boolean(afterObserve.statusLine && /agy-hud/i.test(String(afterObserve.statusLine.command || '')));
     const runtimeReady = Boolean(afterObserve.runtimeHudExists);
     const staleCleaned = stalePresentBeforeBootstrap ? !fs.existsSync(planted) : true;
@@ -430,6 +441,16 @@ function observeLocalAgy(env) {
     server.close();
     if (!currentHome) fs.rmSync(tmpRoot, { recursive: true, force: true });
   }
-})().catch(error => {
-  fail(error.stack || error.message);
-});
+}
+
+module.exports = {
+  stripAnsi,
+  renderTerminalScreen,
+  detectHudRender,
+};
+
+if (require.main === module) {
+  main().catch(error => {
+    fail(error.stack || error.message);
+  });
+}
