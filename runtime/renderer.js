@@ -371,9 +371,9 @@ function renderHUD(state, agyData, config, quotaData, tierName) {
   if (hooksCount > 0) metaParts.push(`${gray}${hooksCount} hooks${reset}`);
   const line3 = metaParts.length > 0 ? metaParts.join(divider) : '';
 
-  // Helper to render one quota item inside a column of exactly columnWidth visible chars
   const renderQuotaColumn = (q, now) => {
     const pct = Math.round(q.remainingFraction * 100);
+    const pctColor = pct <= (1 - critThresh) * 100 ? red : pct <= (1 - warnThresh) * 100 ? yellow : green;
 
     // 1. Name
     const rawName = simplifyModelName(q.displayName || q.id);
@@ -381,11 +381,10 @@ function renderHUD(state, agyData, config, quotaData, tierName) {
     const coloredName = `${cyan}${namePart}${reset}`;
 
     // 2. Bar (8 chars visible: [ + 6 bars + ])
-    const barPart = createProgressBar(pct, green, 6, false);
+    const barPart = createProgressBar(pct, pctColor, 6, false);
 
     // 3. Percent (4 chars)
     const pctStr = `${pct}%`.padStart(4, ' ');
-    const pctColor = pct <= (1 - critThresh) * 100 ? red : pct <= (1 - warnThresh) * 100 ? yellow : green;
     const coloredPct = `${pctColor}${pctStr}${reset}`;
 
     // 4. Time (6 chars)

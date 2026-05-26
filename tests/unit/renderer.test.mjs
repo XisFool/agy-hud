@@ -542,3 +542,21 @@ test('renderHUD does not show loading when quotaData is null or undefined', () =
   const output2 = renderHUD(state, agyData, { display: { unicode: true } });
   assert.doesNotMatch(output2, /Quota loading/);
 });
+
+test('renderHUD uses warning/critical colors for both percent text and progress bar in table mode', () => {
+  const state = { steps: 0, branch: 'main' };
+  const agyData = {
+    context_window: { total_input_tokens: 0, total_output_tokens: 0, used_percentage: 0 }
+  };
+  const quotaData = [{
+    id: 'gemini-3.5-flash-low',
+    displayName: 'Gemini 3.5 Flash (Low)',
+    remainingFraction: 0.08, // 8%, which is <= 10% critical threshold
+    resetTime: null
+  }];
+  const output = renderHUD(state, agyData, { display: { unicode: true, useNerdFonts: false } }, quotaData);
+  
+  // Assert red color code \x1b[31m prefix on progress bar
+  assert.match(output, /\x1b\[31m\[/);
+});
+
