@@ -89,6 +89,42 @@ jobs:
         shell: pwsh
         run: agy --help | Select-Object -First 5
 
+      - name: Test configure-utf8 script (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $tempDir = Join-Path $env:RUNNER_TEMP 'configure-utf8'
+          New-Item -ItemType Directory -Force -Path $tempDir | Out-Null
+
+          $env:AGY_HUD_PROFILE_PATH = Join-Path $tempDir 'Microsoft.PowerShell_profile.ps1'
+          $env:GIT_CONFIG_GLOBAL = Join-Path $tempDir '.gitconfig'
+
+          powershell -NoProfile -ExecutionPolicy Bypass -File scripts\configure-utf8.ps1
+          powershell -NoProfile -ExecutionPolicy Bypass -File scripts\configure-utf8.ps1
+
+          if (-not (Test-Path $env:AGY_HUD_PROFILE_PATH)) {
+            throw 'configure-utf8 did not create the expected profile file'
+          }
+
+          $profileText = Get-Content -Raw -Path $env:AGY_HUD_PROFILE_PATH
+          $markerCount = ([regex]::Matches($profileText, 'AGY-HUD UTF-8 encoding setup')).Count
+          if ($markerCount -ne 1) {
+            throw "expected exactly one UTF-8 profile marker, got $markerCount"
+          }
+
+          if ((git config --global --get core.quotepath) -ne 'false') {
+            throw 'core.quotepath was not configured'
+          }
+          if ((git config --global --get gui.encoding) -ne 'utf-8') {
+            throw 'gui.encoding was not configured'
+          }
+          if ((git config --global --get i18n.commitencoding) -ne 'utf-8') {
+            throw 'i18n.commitencoding was not configured'
+          }
+          if ((git config --global --get i18n.logoutputencoding) -ne 'utf-8') {
+            throw 'i18n.logoutputencoding was not configured'
+          }
+
       # Build the zip per-OS. Git Bash on Windows has no `zip`; use Compress-Archive.
       - name: Build zip (Unix)
         if: runner.os != 'Windows'

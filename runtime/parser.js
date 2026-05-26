@@ -4,6 +4,32 @@ const os = require('os');
 const { execFileSync } = require('child_process');
 const { resolveSafeExecutable, resolveAntigravityPath } = require('./paths.js');
 
+function isObject(value) {
+  return value !== null && typeof value === 'object' && !Array.isArray(value);
+}
+
+function isContextWindow(value) {
+  return isObject(value) && (
+    Object.hasOwn(value, 'total_input_tokens') ||
+    Object.hasOwn(value, 'total_output_tokens') ||
+    Object.hasOwn(value, 'context_window_size') ||
+    Object.hasOwn(value, 'used_percentage') ||
+    isObject(value.current_usage)
+  );
+}
+
+function findContextWindow(value, depth = 0) {
+  if (!isObject(value) || depth > 4) return null;
+  if (isContextWindow(value.context_window)) return value.context_window;
+  if (isContextWindow(value)) return value;
+
+  for (const child of Object.values(value)) {
+    const found = findContextWindow(child, depth + 1);
+    if (found) return found;
+  }
+  return null;
+}
+
 /**
  * Parses the transcript log to count steps and get branch info.
  * Also scans local config / workspace metadata (memory files, rules count, MCPs, hooks).
@@ -14,6 +40,7 @@ async function getSessionState(transcriptPath) {
   let steps = 0;
   let branch = 'main';
   let gitPath = null;
+  let usage;
 
   try {
     const fileContent = fs.readFileSync(transcriptPath, 'utf8');
@@ -23,6 +50,10 @@ async function getSessionState(transcriptPath) {
         const entry = JSON.parse(line);
         if (entry.step_index > steps) {
           steps = entry.step_index;
+        }
+        const contextWindow = findContextWindow(entry);
+        if (contextWindow) {
+          usage = contextWindow;
         }
       } catch {
         // Skip invalid JSON lines
@@ -133,7 +164,9 @@ async function getSessionState(transcriptPath) {
     }
   } catch {}
 
-  return { steps, branch, memoryFile, rulesCount, mcpCount, hooksCount };
+  const state = { steps, branch, memoryFile, rulesCount, mcpCount, hooksCount };
+  if (usage) state.usage = usage;
+  return state;
 }
 
 /**

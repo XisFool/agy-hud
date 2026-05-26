@@ -26,7 +26,7 @@ test('renderHUD should contain branch and steps', () => {
   assert.match(output, /^\x1b\[1m\x1b\[36mAGY-HUD/);
   assert.match(output, /main/);
   assert.match(output, /42/);
-  assert.match(output, /15\.0k\/5\.0k/);
+  assert.match(output, /Tokens: 20k \(in: 15k, out: 5k, cache: 0\)/);
   assert.match(output, /Google AI Pro/);
   assert.match(output, /│/); // Unicode divider
   assert.match(output, /Gem 3.5 Flash\(H\)/); // Simplified model name
@@ -49,6 +49,55 @@ test('renderHUD should correctly render Memory files, rules, MCPs, and hooks cou
   assert.match(output, /4 rules/);
   assert.match(output, /1 MCPs/);
   assert.match(output, /5 hooks/);
+});
+
+test('renderHUD should correctly display detailed tokens with cache read statistics', () => {
+  const state = { steps: 5, branch: 'main' };
+  const agyData = {
+    context_window: {
+      total_input_tokens: 190702,
+      total_output_tokens: 358448,
+      used_percentage: 18.1,
+      context_window_size: 1048576,
+      current_usage: {
+        input_tokens: 1890,
+        output_tokens: 169,
+        cache_creation_input_tokens: 0,
+        cache_read_input_tokens: 191019
+      }
+    }
+  };
+
+  const output = renderHUD(state, agyData, { display: { useNerdFonts: false, unicode: true } });
+  // Total = 1890 + 358448 + 191019 = 551357 -> 551.4k
+  // in = 1890 -> 1890 (or 1.9k)
+  // out = 358448 -> 358.4k
+  // cache = 191019 -> 191k (exactly 191.019k)
+  assert.match(output, /Tokens: 551\.4k \(in: 1\.9k, out: 358\.4k, cache: 191k\)/);
+});
+
+test('renderHUD should fall back to transcript token usage for cache breakdown', () => {
+  const state = {
+    steps: 5,
+    branch: 'main',
+    usage: {
+      current_usage: {
+        input_tokens: 6000,
+        cache_read_input_tokens: 138200000
+      }
+    }
+  };
+  const agyData = {
+    context_window: {
+      total_input_tokens: 138206000,
+      total_output_tokens: 202000,
+      used_percentage: 18.1,
+      context_window_size: 1048576
+    }
+  };
+
+  const output = renderHUD(state, agyData, { display: { useNerdFonts: false, unicode: true } });
+  assert.match(output, /Tokens: 138\.4M \(in: 6k, out: 202k, cache: 138\.2M\)/);
 });
 
 test('renderHUD preserves model name suffixes when applying display aliases', () => {
