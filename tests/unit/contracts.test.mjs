@@ -74,3 +74,32 @@ test('configure-utf8 script fails loudly and is covered by Windows CI', () => {
   assert.match(workflow, /GIT_CONFIG_GLOBAL/);
   assert.match(workflow, /AGY_HUD_PROFILE_PATH/);
 });
+
+test('release package contract does not ship agent skills', () => {
+  const packageJson = readJson('package.json');
+  const releaseScript = readText('release.sh');
+  const workflow = readText('.github/workflows/e2e.yml');
+  const readme = readText('README.md');
+  const readmeZh = readText('README_zh.md');
+
+  assert.deepEqual(packageJson.files, [
+    'runtime',
+    'scripts',
+    'plugin.json',
+    'README.md',
+    'package.json',
+  ]);
+  assert.doesNotMatch(releaseScript, /skills/);
+  assert.doesNotMatch(workflow, /\bskills\b/);
+  assert.doesNotMatch(readme, /skills\//);
+  assert.doesNotMatch(readmeZh, /skills\//);
+});
+
+test('package does not keep obsolete local HTTP server helpers', () => {
+  const packageJson = readJson('package.json');
+
+  assert.equal(packageJson.scripts['serve:release'], undefined);
+  assert.equal(packageJson.scripts['serve:source'], undefined);
+  assert.equal(fs.existsSync(path.join(projectRoot, 'scripts', 'serve-release.js')), false);
+  assert.equal(fs.existsSync(path.join(projectRoot, 'scripts', 'serve-source.js')), false);
+});
