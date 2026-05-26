@@ -773,16 +773,16 @@ async function getQuota(options = {}) {
     return payload.data;
   }
 
+  if (tokenExpired) {
+    refreshWindowsCredential();
+    return createUnavailableQuotaResult('expired_token');
+  }
+
   // Fallback to any readable cache payload on disk to prevent "Quota loading" flicker
   // while we perform a background refresh for the current token.
   const fallback = readCacheFallback();
   if (fallback) {
     return fallback.data;
-  }
-
-  if (tokenExpired) {
-    refreshWindowsCredential();
-    return createUnavailableQuotaResult('expired_token');
   }
 
   // If no cache exists at all, return empty. Non-fast callers trigger the

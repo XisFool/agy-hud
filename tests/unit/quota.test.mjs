@@ -995,3 +995,34 @@ test('getQuota falls back to readCacheFallback and returns data when token is un
   }
 });
 
+test('getQuota reports expired_token when token is expired, even if fallback cache exists', async () => {
+  const previousCache = fs.existsSync(CACHE_PATH) ? fs.readFileSync(CACHE_PATH, 'utf8') : null;
+  try {
+    const payload = {
+      version: 2,
+      expiresAt: Date.now() + 60000,
+      lastRefreshed: Date.now() - 50000,
+      cacheKeyHash: 'token-A-hash',
+      tokenHash: 'token-A-hash',
+      data: [{ id: 'gemini-3-flash-agent', remainingFraction: 0.77 }],
+    };
+    fs.writeFileSync(CACHE_PATH, JSON.stringify(payload), { mode: 0o600 });
+
+    const result = await getQuota({
+      fast: true,
+      tokenReader: () => ({
+        accessToken: 'token-B',
+        sourcePath: '/token/B',
+        expiry: new Date(Date.now() - 10000).toISOString(), // expired 10s ago
+      }),
+      backgroundRefresh: () => {},
+    });
+
+    assert.equal(result.unavailableReason, 'expired_token');
+    assert.equal(result.length, 0);
+  } finally {
+    if (previousCache === null) fs.rmSync(CACHE_PATH, { force: true });
+    else fs.writeFileSync(CACHE_PATH, previousCache);
+  }
+});
+
