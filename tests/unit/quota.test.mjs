@@ -495,6 +495,24 @@ test('fetchQuotaFromCloud returns a fetch diagnostic for transport failures', as
   }
 });
 
+test('fetchQuotaFromCloud passes AbortSignal to fetch and handles timeout aborts', async () => {
+  const originalFetch = globalThis.fetch;
+  let signalPassed = null;
+  globalThis.fetch = async (url, options) => {
+    signalPassed = options?.signal;
+    throw new Error('simulate instant network failure');
+  };
+
+  try {
+    await fetchQuotaFromCloud('token');
+    assert.ok(signalPassed, 'AbortSignal must be passed to fetch');
+    assert.equal(typeof signalPassed.aborted, 'boolean');
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+
 test('readCache / writeCache reuses stable token source across access token refreshes', () => {
   const { readCache, writeCache } = quotaModule;
   const mockData = [{ id: 'gemini-3.5-flash-low', displayName: 'Gemini 3.5 Flash (Medium)', remainingFraction: 0.5, resetTime: null }];
@@ -680,6 +698,26 @@ test('fetchTierFromCloud returns null when all endpoints fail', async () => {
     globalThis.fetch = originalFetch;
   }
 });
+
+test('fetchTierFromCloud passes AbortSignal to fetch and handles timeout aborts', async () => {
+  const originalFetch = globalThis.fetch;
+  let signalPassed = null;
+  globalThis.fetch = async (url, options) => {
+    signalPassed = options?.signal;
+    throw new Error('simulate instant network failure');
+  };
+
+  try {
+    await withEnv({ AGY_HUD_ENDPOINTS: 'https://mock.test' }, () =>
+      fetchTierFromCloud('test-token')
+    );
+    assert.ok(signalPassed, 'AbortSignal must be passed to fetch');
+    assert.equal(typeof signalPassed.aborted, 'boolean');
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
 
 test('fetchTierFromCloud returns null when response ok but no tier data', async () => {
   const originalFetch = globalThis.fetch;

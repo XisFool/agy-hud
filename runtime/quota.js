@@ -409,6 +409,8 @@ async function fetchTierFromCloud(accessToken) {
     : (config.endpoints || DEFAULT_ENDPOINTS);
 
   for (const endpoint of endpoints) {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 3000);
     try {
       const r = await fetch(`${endpoint}/v1internal:loadCodeAssist`, {
         method: 'POST',
@@ -421,11 +423,16 @@ async function fetchTierFromCloud(accessToken) {
             pluginType: 'GEMINI',
           },
         }),
+        signal: controller.signal,
       });
+      clearTimeout(timeoutId);
       if (!r.ok) continue;
       const data = await r.json();
       return extractTierName(data);
-    } catch { /* try next endpoint */ }
+    } catch {
+      clearTimeout(timeoutId);
+      /* try next endpoint */
+    }
   }
   return null;
 }
@@ -444,12 +451,16 @@ async function fetchQuotaFromCloud(accessToken) {
     : null;
 
   for (const endpoint of endpoints) {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 3000);
     try {
       const r = await fetch(`${endpoint}/v1internal:fetchAvailableModels`, {
         method: 'POST',
         headers: buildHeaders(accessToken),
         body: JSON.stringify({}),
+        signal: controller.signal,
       });
+      clearTimeout(timeoutId);
       if (!r.ok) {
         if (r.status === 401 || r.status === 403) sawAuthFailure = true;
         continue;
@@ -463,7 +474,10 @@ async function fetchQuotaFromCloud(accessToken) {
             data
           );
       return normalizeQuotaModels(models, interestingModelIds);
-    } catch { /* try next endpoint */ }
+    } catch {
+      clearTimeout(timeoutId);
+      /* try next endpoint */
+    }
   }
   return createUnavailableQuotaResult(sawAuthFailure ? 'auth_failed' : 'quota_fetch_failed');
 }
