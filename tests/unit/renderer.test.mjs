@@ -29,7 +29,7 @@ test('renderHUD should contain branch and steps', () => {
   assert.match(output, /Tokens: 20k \(in: 15k, out: 5k, cache: 0\)/);
   assert.match(output, /Google AI Pro/);
   assert.match(output, /│/); // Unicode divider
-  assert.match(output, /Gem 3.5 Flash\(H\)/); // Simplified model name
+  assert.match(output, /Gemini 3.5 Flash\(H\)/); // Simplified model name
 });
 
 test('renderHUD should correctly render Memory files, rules, MCPs, and hooks count', () => {
@@ -110,7 +110,7 @@ test('renderHUD preserves model name suffixes when applying display aliases', ()
     { display: { useNerdFonts: false, unicode: false } }
   );
 
-  assert.match(output, /Gem 3\.5 Flash\(H\) Preview/);
+  assert.match(output, /Gemini 3\.5 Flash\(H\) Preview/);
 
   const outputLow = renderHUD(
     { steps: 1, branch: 'main' },
@@ -121,7 +121,7 @@ test('renderHUD preserves model name suffixes when applying display aliases', ()
     { display: { useNerdFonts: false, unicode: false } }
   );
 
-  assert.match(outputLow, /Gem 3\.5 Flash\(L\)/);
+  assert.match(outputLow, /Gemini 3\.5 Flash\(L\)/);
 });
 
 test('renderHUD should correctly layout quotas in two aligned columns', () => {
@@ -139,7 +139,7 @@ test('renderHUD should correctly layout quotas in two aligned columns', () => {
   // Verify vertical grid lines
   assert.match(output, /───/);
   // Verify simplified names
-  assert.match(output, /Gem 3.5 Flash\(H\)/);
+  assert.match(output, /Gemini 3.5 Flas…/);
   assert.match(output, /Sonnet 4.6\(Th\)/);
   assert.match(output, /GPT-OSS 120B/);
   // Verify reset times
@@ -289,15 +289,15 @@ test('renderHUD supports custom columnWidth', () => {
   };
   const output = renderHUD(state, agyData, config, quotaData);
   assert.match(output, /─{91}/);
-  assert.match(output, /Gem 3\.5 Flash\(H\) {8}/);
+  assert.match(output, /Gemini 3\.5 Flash\(H\) {5}/);
 });
 
 test('abbreviateDisplayName handles all known agent model patterns', () => {
-  assert.equal(abbreviateDisplayName('Gemini 3.5 Flash (High)'), 'Gem 3.5 Flash(H)');
-  assert.equal(abbreviateDisplayName('Gemini 3.5 Flash (Medium)'), 'Gem 3.5 Flash(M)');
-  assert.equal(abbreviateDisplayName('Gemini 3.5 Flash (Low)'), 'Gem 3.5 Flash(L)');
-  assert.equal(abbreviateDisplayName('Gemini 3.1 Pro (High)'), 'Gem 3.1 Pro(H)');
-  assert.equal(abbreviateDisplayName('Gemini 3.1 Pro (Low)'), 'Gem 3.1 Pro(L)');
+  assert.equal(abbreviateDisplayName('Gemini 3.5 Flash (High)'), 'Gemini 3.5 Flash(H)');
+  assert.equal(abbreviateDisplayName('Gemini 3.5 Flash (Medium)'), 'Gemini 3.5 Flash(M)');
+  assert.equal(abbreviateDisplayName('Gemini 3.5 Flash (Low)'), 'Gemini 3.5 Flash(L)');
+  assert.equal(abbreviateDisplayName('Gemini 3.1 Pro (High)'), 'Gemini 3.1 Pro(H)');
+  assert.equal(abbreviateDisplayName('Gemini 3.1 Pro (Low)'), 'Gemini 3.1 Pro(L)');
   assert.equal(abbreviateDisplayName('Claude Sonnet 4.6 (Thinking)'), 'Sonnet 4.6(Th)');
   assert.equal(abbreviateDisplayName('Claude Opus 4.6 (Thinking)'), 'Opus 4.6(Th)');
   assert.equal(abbreviateDisplayName('GPT-OSS 120B (Medium)'), 'GPT-OSS 120B');
@@ -309,7 +309,7 @@ test('abbreviateDisplayName passes through unknown names unchanged', () => {
 });
 
 test('abbreviateDisplayName handles hypothetical future models', () => {
-  assert.equal(abbreviateDisplayName('Gemini 4.0 Flash (High)'), 'Gem 4.0 Flash(H)');
+  assert.equal(abbreviateDisplayName('Gemini 4.0 Flash (High)'), 'Gemini 4.0 Flash(H)');
   assert.equal(abbreviateDisplayName('Claude Haiku 5.0 (Thinking)'), 'Haiku 5.0(Th)');
   assert.equal(abbreviateDisplayName('GPT-OSS 200B (Low)'), 'GPT-OSS 200B');
 });
@@ -374,6 +374,34 @@ test('renderHUD table mode is unchanged with quotaStyle unset', () => {
   const output = renderHUD(state, agyData, config, quotaData);
 
   assert.match(output, /─+/);
-  assert.match(output, /Gem 3\.5 Flash\(H\)/);
+  assert.match(output, /Gemini 3\.5 Flas…/);
   assert.doesNotMatch(output, /Google:/);
+});
+
+test('renderHUD shows loading state when quotaData is empty array without reason', () => {
+  const state = { steps: 0, branch: 'main' };
+  const agyData = {
+    context_window: { total_input_tokens: 1000, total_output_tokens: 200, used_percentage: 5 }
+  };
+
+  const outputUnicode = renderHUD(state, agyData, { display: { unicode: true } }, []);
+  assert.match(outputUnicode, /Quota loading…/);
+  assert.match(outputUnicode, /─+/);
+
+  const outputAscii = renderHUD(state, agyData, { display: { unicode: false } }, []);
+  assert.match(outputAscii, /Quota loading\.\.\./);
+});
+
+test('renderHUD does not show loading when quotaData is null or undefined', () => {
+  const state = { steps: 0, branch: 'main' };
+  const agyData = {
+    context_window: { total_input_tokens: 1000, total_output_tokens: 200, used_percentage: 5 }
+  };
+
+  const output = renderHUD(state, agyData, { display: { unicode: true } }, null);
+  assert.doesNotMatch(output, /Quota loading/);
+  assert.doesNotMatch(output, /Quota unavailable/);
+
+  const output2 = renderHUD(state, agyData, { display: { unicode: true } });
+  assert.doesNotMatch(output2, /Quota loading/);
 });
