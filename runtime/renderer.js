@@ -304,13 +304,14 @@ function renderHUD(state, agyData, config, quotaData, tierName) {
   const outTokens = totalOutput;
   const tokenTotal = inTokens + outTokens + cacheRead;
 
-  // Compact token format: ⚿ 150k (↑127k ↓23k [⟳Xk])
-  const detailParts = [`${inArrow}${formatTokens(inTokens)}`, `${outArrow}${formatTokens(outTokens)}`];
+  // Compact token format: Tokens 150k (in: 127k, out: 23k, cache: Xk)
+  const detailParts = [`in: ${formatTokens(inTokens)}`, `out: ${formatTokens(outTokens)}`];
   if (cacheRead > 0) {
-    detailParts.push(`${cacheArrow}${formatTokens(cacheRead)}`);
+    detailParts.push(`cache: ${formatTokens(cacheRead)}`);
   }
-  const tokenParts = `${formatTokens(tokenTotal)} ${gray}(${reset}${detailParts.join(' ')}${gray})${reset}`;
-  const tokensStr = `${cyan}${tokenIcon}${tokenParts}${reset}`;
+  const tokenParts = `${formatTokens(tokenTotal)} ${gray}(${reset}${detailParts.join(', ')}${gray})${reset}`;
+  const tokenPrefix = tokenIcon === '[Tk] ' ? 'Tokens' : `${tokenIcon}Tokens`;
+  const tokensStr = `${cyan}${tokenPrefix} ${tokenParts}${reset}`;
   const ctxBar = createProgressBar(ctxPercent, cyan, 10, true);
   const ctxPctStr = `${Math.round(ctxPercent)}%`;
   const ctxStr = `${cyan}${ctxIcon}${formatTokens(totalInput)}/${formatTokens(usage.context_window_size || 0)}${reset} ${ctxBar} ${cyan}${ctxPctStr}${reset}`;

@@ -28,7 +28,7 @@ test('renderHUD should contain branch and steps', () => {
   assert.match(output, /Gemini 3\.5 Flash\(H\)/);
   assert.match(output, /Google AI Pro/);
   // Layer 2: compact tokens, context bar with %, steps/tasks
-  assert.match(output, /20k .*?\(.*?↑15k .*?↓5k.*?\)/);
+  assert.match(output, /Tokens 20k .*?\(.*?in: 15k, out: 5k.*?\)/);
   assert.match(output, /13%/);
   assert.match(output, /⚡ 42/);
   assert.match(output, /✓ 3/);
@@ -109,7 +109,7 @@ test('renderHUD should correctly display detailed tokens with cache read statist
 
   const output = renderHUD(state, agyData, { display: { useNerdFonts: false, unicode: true } });
   // Compact format: total ↑in ↓out ⟳cache
-  assert.match(output, /551\.4k .*?\(.*?↑1\.9k .*?↓358\.4k .*?⟳191k.*?\)/);
+  assert.match(output, /Tokens 551\.4k .*?\(.*?in: 1\.9k, out: 358\.4k, cache: 191k.*?\)/);
 });
 
 test('renderHUD should fall back to transcript token usage for cache breakdown', () => {
@@ -133,7 +133,7 @@ test('renderHUD should fall back to transcript token usage for cache breakdown',
   };
 
   const output = renderHUD(state, agyData, { display: { useNerdFonts: false, unicode: true } });
-  assert.match(output, /138\.4M .*?\(.*?↑6k .*?↓202k .*?⟳138\.2M.*?\)/);
+  assert.match(output, /Tokens 138\.4M .*?\(.*?in: 6k, out: 202k, cache: 138\.2M.*?\)/);
 });
 
 test('renderHUD hides cache when zero', () => {
@@ -142,7 +142,7 @@ test('renderHUD hides cache when zero', () => {
     context_window: { total_input_tokens: 1000, total_output_tokens: 200, used_percentage: 5, context_window_size: 1000000 }
   };
   const output = renderHUD(state, agyData, { display: { useNerdFonts: false, unicode: true } });
-  assert.match(output, /1\.2k .*?\(.*?↑1k .*?↓200.*?\)/);
+  assert.match(output, /Tokens 1\.2k .*?\(.*?in: 1k, out: 200.*?\)/);
   assert.doesNotMatch(output, /⟳/);
 });
 
@@ -282,10 +282,10 @@ test('renderHUD falls back to ASCII when config.display.unicode is false', () =>
   assert.match(output, /#/);
   // Plain-text icons
   assert.match(output, /\[B\]/);
-  assert.match(output, /\[Tk\]/);
-  // ASCII arrows
-  assert.match(output, /\^1k/);
-  assert.match(output, /v200/);
+  assert.match(output, /Tokens/);
+  // ASCII labels
+  assert.match(output, /in: 1k/);
+  assert.match(output, /out: 200/);
 });
 
 test('renderHUD should render Nerd Font icons when enabled', () => {
