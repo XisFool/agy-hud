@@ -944,3 +944,32 @@ test('readCacheFallback returns payload without token matching', () => {
     else fs.writeFileSync(CACHE_PATH, previousCache);
   }
 });
+
+test('getQuota falls back to readCacheFallback and returns data when token is unmatched', async () => {
+  const previousCache = fs.existsSync(CACHE_PATH) ? fs.readFileSync(CACHE_PATH, 'utf8') : null;
+  try {
+    const payload = {
+      version: 2,
+      expiresAt: Date.now() + 60000,
+      lastRefreshed: Date.now() - 50000,
+      cacheKeyHash: 'token-A-hash',
+      tokenHash: 'token-A-hash',
+      data: [{ id: 'gemini-3-flash-agent', remainingFraction: 0.77 }],
+    };
+    fs.writeFileSync(CACHE_PATH, JSON.stringify(payload), { mode: 0o600 });
+
+    let refreshes = 0;
+    const result = await getQuota({
+      fast: true,
+      tokenReader: () => ({ accessToken: 'token-B', sourcePath: '/token/B' }),
+      backgroundRefresh: () => { refreshes += 1; },
+    });
+
+    assert.equal(refreshes, 1, 'should trigger background refresh due to token rotation');
+    assert.deepEqual(result, payload.data, 'should fall back and return the cached data to avoid Quota loading flicker');
+  } finally {
+    if (previousCache === null) fs.rmSync(CACHE_PATH, { force: true });
+    else fs.writeFileSync(CACHE_PATH, previousCache);
+  }
+});
+
