@@ -177,7 +177,8 @@ powershell -ExecutionPolicy Bypass -Command "irm https://raw.githubusercontent.c
 {
   "display": {
     "useNerdFonts": false,
-    "columnWidth": 37
+    "columnWidth": 37,
+    "quotaStyle": "table"
   },
   "thresholds": {
     "warning": 0.7,
