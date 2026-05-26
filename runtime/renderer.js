@@ -203,7 +203,9 @@ function renderHUD(state, agyData, config, quotaData, tierName) {
   ].join(divider);
 
   const currentUsage = usage.current_usage || {};
-  const cacheRead = currentUsage.cache_read_input_tokens || 0;
+  const cacheRead = currentUsage.cache_read_input_tokens
+    || usage.cache_read_input_tokens
+    || 0;
   let inTokens = currentUsage.input_tokens;
   if (inTokens === undefined) {
     inTokens = Math.max(0, totalInput - cacheRead);
