@@ -70,17 +70,32 @@ const DEFAULT_ENDPOINTS = [
   'https://cloudcode-pa.googleapis.com',
 ];
 
-// Models to show in the HUD — filtered from the full list, de-duped by quota bucket
-const DEFAULT_INTERESTING_MODEL_IDS = [
-  'gemini-3-flash-agent',    // Gemini 3.5 Flash (High)
-  'gemini-3.5-flash-low',    // Gemini 3.5 Flash (Medium)
-  'gemini-3.5-flash-extra-low', // Gemini 3.5 Flash (Low)
-  'gemini-3.1-pro-high',     // Gemini 3.1 Pro (High)
-  'gemini-3.1-pro-low',      // Gemini 3.1 Pro (Low)
-  'claude-sonnet-4-6',       // Claude Sonnet 4.6
-  'claude-opus-4-6-thinking',// Claude Opus 4.6
-  'gpt-oss-120b-medium',     // GPT-OSS 120B
+// Fallback model list when agentModelSorts is absent from the API response
+const FALLBACK_AGENT_MODEL_IDS = [
+  'gemini-3-flash-agent',
+  'gemini-3.5-flash-low',
+  'gemini-3.5-flash-extra-low',
+  'gemini-pro-agent',
+  'gemini-3.1-pro-low',
+  'claude-sonnet-4-6',
+  'claude-opus-4-6-thinking',
+  'gpt-oss-120b-medium',
 ];
+
+function discoverAgentModelIds(apiResponse) {
+  const sorts = apiResponse.agentModelSorts;
+  if (Array.isArray(sorts) && sorts.length > 0) {
+    const ids = sorts[0].groups?.[0]?.modelIds;
+    if (Array.isArray(ids) && ids.length > 0) return ids;
+  }
+  return null;
+}
+
+function resolveDeprecatedIds(ids, apiResponse) {
+  const deprecated = apiResponse.deprecatedModelIds;
+  if (!deprecated || typeof deprecated !== 'object') return ids;
+  return ids.map(id => deprecated[id]?.newModelId || id);
+}
 
 function normalizeRemainingFraction(value, hasResetTime = false) {
   if (value === undefined || value === null) {
@@ -97,7 +112,7 @@ function normalizeRemainingFraction(value, hasResetTime = false) {
  * @param {Object<string, Object>} models
  * @returns {ModelQuota[]}
  */
-function normalizeQuotaModels(models, interestingModelIds = DEFAULT_INTERESTING_MODEL_IDS) {
+function normalizeQuotaModels(models, interestingModelIds = FALLBACK_AGENT_MODEL_IDS) {
   const results = [];
   for (const id of interestingModelIds) {
     const m = models[id];
@@ -423,9 +438,9 @@ async function fetchQuotaFromCloud(accessToken) {
     ? process.env.AGY_HUD_ENDPOINTS.split(',').map(s => s.trim()).filter(Boolean)
     : (config.endpoints || DEFAULT_ENDPOINTS);
 
-  const interestingModelIds = process.env.AGY_HUD_INTERESTING_MODELS
+  const envModelIds = process.env.AGY_HUD_INTERESTING_MODELS
     ? process.env.AGY_HUD_INTERESTING_MODELS.split(',').map(s => s.trim()).filter(Boolean)
-    : (config.interestingModels || DEFAULT_INTERESTING_MODEL_IDS);
+    : null;
 
   for (const endpoint of endpoints) {
     try {
@@ -440,6 +455,12 @@ async function fetchQuotaFromCloud(accessToken) {
       }
       const data = await r.json();
       const models = data.models || {};
+      const interestingModelIds = envModelIds
+        || config.interestingModels
+        || resolveDeprecatedIds(
+            discoverAgentModelIds(data) || FALLBACK_AGENT_MODEL_IDS,
+            data
+          );
       return normalizeQuotaModels(models, interestingModelIds);
     } catch { /* try next endpoint */ }
   }
@@ -701,6 +722,8 @@ module.exports = {
   fetchTierFromCloud,
   extractTierName,
   normalizeQuotaModels,
+  discoverAgentModelIds,
+  resolveDeprecatedIds,
   isCachePayloadFresh,
   createUnavailableQuotaResult,
   selectUsableTokens,

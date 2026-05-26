@@ -17,6 +17,8 @@ const {
   fetchTierFromCloud,
   extractTierName,
   normalizeQuotaModels,
+  discoverAgentModelIds,
+  resolveDeprecatedIds,
   isCachePayloadFresh,
   createUnavailableQuotaResult,
   selectUsableTokens,
@@ -697,4 +699,36 @@ test('fetchTierFromCloud returns null when response ok but no tier data', async 
   } finally {
     globalThis.fetch = originalFetch;
   }
+});
+
+test('discoverAgentModelIds extracts model IDs from agentModelSorts', () => {
+  const apiResponse = {
+    agentModelSorts: [{
+      groups: [{ modelIds: ['gemini-3-flash-agent', 'claude-sonnet-4-6'] }]
+    }]
+  };
+  assert.deepEqual(discoverAgentModelIds(apiResponse), ['gemini-3-flash-agent', 'claude-sonnet-4-6']);
+});
+
+test('discoverAgentModelIds returns null when agentModelSorts is missing', () => {
+  assert.equal(discoverAgentModelIds({}), null);
+  assert.equal(discoverAgentModelIds({ agentModelSorts: [] }), null);
+  assert.equal(discoverAgentModelIds({ agentModelSorts: [{ groups: [] }] }), null);
+  assert.equal(discoverAgentModelIds({ agentModelSorts: [{ groups: [{ modelIds: [] }] }] }), null);
+});
+
+test('resolveDeprecatedIds swaps deprecated model IDs for their replacements', () => {
+  const ids = ['gemini-3.1-pro-high', 'claude-sonnet-4-6'];
+  const apiResponse = {
+    deprecatedModelIds: {
+      'gemini-3.1-pro-high': { newModelId: 'gemini-pro-agent' }
+    }
+  };
+  assert.deepEqual(resolveDeprecatedIds(ids, apiResponse), ['gemini-pro-agent', 'claude-sonnet-4-6']);
+});
+
+test('resolveDeprecatedIds is a no-op when no deprecations exist', () => {
+  const ids = ['gemini-3-flash-agent', 'claude-sonnet-4-6'];
+  assert.deepEqual(resolveDeprecatedIds(ids, {}), ids);
+  assert.deepEqual(resolveDeprecatedIds(ids, { deprecatedModelIds: {} }), ids);
 });
