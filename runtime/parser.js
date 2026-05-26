@@ -1,14 +1,8 @@
 const fs = require('fs');
+const path = require('path');
+const os = require('os');
 const { execFileSync } = require('child_process');
-const { resolveSafeExecutable } = require('./paths.js');
-
-/**
- * @typedef {Object} SessionState
- * @property {number} steps
- * @property {number} tokens
- * @property {string} branch
- * @property {Object} [usage]
- */
+const { resolveSafeExecutable, resolveAntigravityPath } = require('./paths.js');
 
 function isObject(value) {
   return value !== null && typeof value === 'object' && !Array.isArray(value);
@@ -38,12 +32,14 @@ function findContextWindow(value, depth = 0) {
 
 /**
  * Parses the transcript log to count steps and get branch info.
+ * Also scans local config / workspace metadata (memory files, rules count, MCPs, hooks).
  * @param {string} transcriptPath
  * @returns {Promise<SessionState>}
  */
 async function getSessionState(transcriptPath) {
   let steps = 0;
   let branch = 'main';
+  let gitPath = null;
   let usage;
 
   try {
@@ -68,11 +64,12 @@ async function getSessionState(transcriptPath) {
   }
 
   try {
-    const gitPath = resolveSafeExecutable('git');
+    gitPath = resolveSafeExecutable('git');
     if (gitPath) {
       const gitBranch = execFileSync(gitPath, ['rev-parse', '--abbrev-ref', 'HEAD'], {
         encoding: 'utf8',
         stdio: ['ignore', 'pipe', 'ignore'],
+        cwd: process.cwd(),
       }).trim();
       branch = gitBranch;
     }
@@ -80,7 +77,96 @@ async function getSessionState(transcriptPath) {
     // Not a git repo or git not found
   }
 
-  return usage ? { steps, branch, usage } : { steps, branch };
+  const cwd = process.cwd();
+  const normalizedCwd = cwd.replace(/\\/g, '/');
+  const projectKey = normalizedCwd.replace(/\//g, '-');
+  const projectMemoryDir = path.join(os.homedir(), '.claude', 'projects', projectKey, 'memory');
+
+  // Detect memory files
+  let memoryFile;
+  if (fs.existsSync(path.join(cwd, 'CLAUDE.md'))) {
+    memoryFile = 'CLAUDE.md';
+  } else if (fs.existsSync(path.join(cwd, 'MEMORY.md'))) {
+    memoryFile = 'MEMORY.md';
+  } else {
+    const projectMemoryPath = path.join(projectMemoryDir, 'MEMORY.md');
+    if (fs.existsSync(projectMemoryPath)) {
+      memoryFile = 'MEMORY.md';
+    }
+  }
+
+  // Count rules
+  let rulesCount = 0;
+  const ruleDirs = [
+    path.join(cwd, '.claude', 'rules'),
+    path.join(cwd, '.cursor', 'rules'),
+    path.join(cwd, '.github', 'rules'),
+    path.join(cwd, '.gemini', 'rules')
+  ];
+  for (const dir of ruleDirs) {
+    if (fs.existsSync(dir)) {
+      try {
+        const files = fs.readdirSync(dir);
+        rulesCount += files.filter(f => f.endsWith('.md')).length;
+      } catch {}
+    }
+  }
+
+  // Count git hooks
+  let hooksCount = 0;
+  let hooksDir = path.join(cwd, '.git', 'hooks');
+  if (gitPath) {
+    try {
+      const gitHooksPath = execFileSync(gitPath, ['rev-parse', '--git-path', 'hooks'], {
+        encoding: 'utf8',
+        stdio: ['ignore', 'pipe', 'ignore'],
+        cwd,
+      }).trim();
+      hooksDir = path.isAbsolute(gitHooksPath)
+        ? gitHooksPath
+        : path.resolve(cwd, gitHooksPath);
+    } catch {}
+  }
+  if (fs.existsSync(hooksDir)) {
+    try {
+      const files = fs.readdirSync(hooksDir);
+      const activeHooks = files.filter(f => {
+        return !f.endsWith('.sample') &&
+               !f.endsWith('.disabled') &&
+               fs.statSync(path.join(hooksDir, f)).isFile();
+      });
+      hooksCount = activeHooks.length;
+    } catch {}
+  }
+
+  // Count MCP servers
+  let mcpCount = 0;
+  try {
+    const settingsPath = resolveAntigravityPath('settings.json');
+    if (fs.existsSync(settingsPath)) {
+      const settings = JSON.parse(fs.readFileSync(settingsPath, 'utf8'));
+      const mcps = settings.mcpServers || settings.mcp;
+      if (mcps && typeof mcps === 'object') {
+        mcpCount += Object.keys(mcps).length;
+      }
+    }
+  } catch {}
+  try {
+    const claudeConfigPath = process.platform === 'win32'
+      ? path.join(os.homedir(), 'AppData', 'Roaming', 'Claude', 'claude_desktop_config.json')
+      : path.join(os.homedir(), 'Library', 'Application Support', 'Claude', 'claude_desktop_config.json');
+    if (fs.existsSync(claudeConfigPath)) {
+      const config = JSON.parse(fs.readFileSync(claudeConfigPath, 'utf8'));
+      const mcps = config.mcpServers || config.mcp;
+      if (mcps && typeof mcps === 'object') {
+        mcpCount += Object.keys(mcps).length;
+      }
+    }
+  } catch {}
+
+  const state = { steps, branch, memoryFile, rulesCount, mcpCount, hooksCount };
+  if (usage) state.usage = usage;
+  return state;
 }
 
 /**

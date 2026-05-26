@@ -233,6 +233,18 @@ function renderHUD(state, agyData, config, quotaData, tierName) {
     modelStr
   ].join(divider);
 
+  const filesPart = state.memoryFile ? `1 ${state.memoryFile}` : '0 MEMORY.md';
+  const rulesPart = `${state.rulesCount || 0} rules`;
+  const mcpPart = `${state.mcpCount || 0} MCPs`;
+  const hooksPart = `${state.hooksCount || 0} hooks`;
+
+  const line3 = [
+    `${gray}${filesPart}${reset}`,
+    `${gray}${rulesPart}${reset}`,
+    `${gray}${mcpPart}${reset}`,
+    `${gray}${hooksPart}${reset}`
+  ].join(divider);
+
   // Helper to render one quota item inside a column of exactly columnWidth visible chars
   const renderQuotaColumn = (q, now) => {
     const pct = Math.round(q.remainingFraction * 100);
@@ -290,7 +302,7 @@ function renderHUD(state, agyData, config, quotaData, tierName) {
     quotaLines = `\n${dividerLine}\n  ${yellow}Quota unavailable:${reset} ${gray}${reason}${reset}\n${dividerLine}`;
   }
 
-  return `${line1}\n${line2}${quotaLines}\n`;
+  return `${line1}\n${line2}\n${line3}${quotaLines}\n`;
 }
 
 module.exports = {

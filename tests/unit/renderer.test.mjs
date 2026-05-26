@@ -32,6 +32,25 @@ test('renderHUD should contain branch and steps', () => {
   assert.match(output, /Gem 3.5 Flash\(H\)/); // Simplified model name
 });
 
+test('renderHUD should correctly render Memory files, rules, MCPs, and hooks count', () => {
+  const state = {
+    steps: 1,
+    branch: 'main',
+    memoryFile: 'MEMORY.md',
+    rulesCount: 4,
+    mcpCount: 1,
+    hooksCount: 5
+  };
+  const agyData = {
+    context_window: { total_input_tokens: 0, total_output_tokens: 0, used_percentage: 0 }
+  };
+  const output = renderHUD(state, agyData, { display: { useNerdFonts: false, unicode: true } });
+  assert.match(output, /1 MEMORY.md/);
+  assert.match(output, /4 rules/);
+  assert.match(output, /1 MCPs/);
+  assert.match(output, /5 hooks/);
+});
+
 test('renderHUD should correctly display detailed tokens with cache read statistics', () => {
   const state = { steps: 5, branch: 'main' };
   const agyData = {
