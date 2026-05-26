@@ -43,6 +43,27 @@ function simplifyModelName(name) {
   return abbreviateDisplayName(name);
 }
 
+const COMPACT_NAME_RULES = [
+  [/^Gemini [\d.]+ (Flash|Pro) \((\w+)\)/, (_, fam, tier) =>
+    `${fam}(${TIER_ABBREVS[tier] || tier[0]})`],
+  [/^Claude (\w+) [\d.]+ \((\w+)\)/, (_, fam) => fam],
+  [/^GPT-OSS .+/, () => 'GPT'],
+];
+
+function compactModelName(displayName) {
+  for (const [re, replacer] of COMPACT_NAME_RULES) {
+    const m = re.exec(displayName);
+    if (m) return displayName.replace(re, replacer);
+  }
+  return displayName.slice(0, 6);
+}
+
+const PROVIDER_LABELS = {
+  MODEL_PROVIDER_GOOGLE: 'Google',
+  MODEL_PROVIDER_ANTHROPIC: 'Anthropic',
+  MODEL_PROVIDER_OPENAI: 'OpenAI',
+};
+
 /**
  * Renders the HUD string for the status line using native ANSI escape codes.
  * Falls back to ASCII when the terminal can't render box-drawing / Nerd Font
@@ -230,11 +251,34 @@ function renderHUD(state, agyData, config, quotaData, tierName) {
   const ctxBar = createProgressBar(ctxPercent, cyan, 10, true);
   const modelStr = `${green}${modelIcon}Model: ${modelName}${reset}`;
 
-  const line2 = [
+  const quotaStyle = config?.display?.quotaStyle || 'table';
+  const isCompact = quotaStyle === 'compact';
+
+  // In compact mode, find current model's quota and append to line 2
+  let currentModelQuota = null;
+  if (isCompact && quotaData && quotaData.length > 0) {
+    const rawName = agyData?.model?.display_name || '';
+    currentModelQuota = quotaData.find(q =>
+      q.displayName === rawName || simplifyModelName(q.displayName) === modelName
+    );
+  }
+
+  const line2Parts = [
     tokensStr,
     `${ctxStr} ${ctxBar}`,
     modelStr
-  ].join(divider);
+  ];
+  if (isCompact && currentModelQuota) {
+    const pct = Math.round(currentModelQuota.remainingFraction * 100);
+    const pctColor = pct <= (1 - critThresh) * 100 ? red : pct <= (1 - warnThresh) * 100 ? yellow : green;
+    let timeStr = '';
+    if (currentModelQuota.resetTime) {
+      const secsLeft = Math.max(0, Math.round((new Date(currentModelQuota.resetTime).getTime() - Date.now()) / 1000));
+      timeStr = ` ${gray}~${formatDuration(secsLeft)}${reset}`;
+    }
+    line2Parts.push(`${pctColor}Quota: ${pct}%${reset}${timeStr}`);
+  }
+  const line2 = line2Parts.join(divider);
 
   const filesPart = state.memoryFile ? `1 ${state.memoryFile}` : '0 MEMORY.md';
   const rulesPart = `${state.rulesCount || 0} rules`;
@@ -278,21 +322,46 @@ function renderHUD(state, agyData, config, quotaData, tierName) {
     return `${coloredName} ${barPart} ${coloredPct} ${coloredTime}`;
   };
 
+  // Compact: provider-grouped mini bars
+  const renderCompactQuotaLine = (data, now) => {
+    const groups = new Map();
+    for (const q of data) {
+      const label = PROVIDER_LABELS[q.modelProvider] || 'Other';
+      if (!groups.has(label)) groups.set(label, []);
+      groups.get(label).push(q);
+    }
+    const segments = [];
+    for (const [provider, models] of groups) {
+      const items = models.map(q => {
+        const name = compactModelName(q.displayName || q.id);
+        const pct = Math.round(q.remainingFraction * 100);
+        const filled = Math.round((pct / 100) * 3);
+        const empty = 3 - filled;
+        const barColor = pct <= (1 - critThresh) * 100 ? red : pct <= (1 - warnThresh) * 100 ? yellow : green;
+        return `${cyan}${name}${reset}${barColor}${glyph.bar.repeat(filled)}${gray}${glyph.empty.repeat(empty)}${reset}`;
+      });
+      segments.push(`${gray}${provider}:${reset} ${items.join(' ')}`);
+    }
+    return segments.join(divider);
+  };
+
   // Build quota lines
   let quotaLines = '';
   if (quotaData && quotaData.length > 0) {
     const now = Date.now();
-    const cols = quotaData.map(q => renderQuotaColumn(q, now));
-
-    const rows = [];
-    for (let i = 0; i < cols.length; i += 2) {
-      const col1 = cols[i];
-      const col2 = cols[i + 1] || ' '.repeat(columnWidth);
-      rows.push(`  ${col1} ${gray}${glyph.vbar}${reset} ${col2}`);
+    if (isCompact) {
+      quotaLines = `\n${renderCompactQuotaLine(quotaData, now)}`;
+    } else {
+      const cols = quotaData.map(q => renderQuotaColumn(q, now));
+      const rows = [];
+      for (let i = 0; i < cols.length; i += 2) {
+        const col1 = cols[i];
+        const col2 = cols[i + 1] || ' '.repeat(columnWidth);
+        rows.push(`  ${col1} ${gray}${glyph.vbar}${reset} ${col2}`);
+      }
+      const dividerLine = `  ${gray}${glyph.hbar.repeat(columnWidth * 2 + 1)}${reset}`;
+      quotaLines = `\n${dividerLine}\n` + rows.join('\n') + `\n${dividerLine}`;
     }
-
-    const dividerLine = `  ${gray}${glyph.hbar.repeat(columnWidth * 2 + 1)}${reset}`;
-    quotaLines = `\n${dividerLine}\n` + rows.join('\n') + `\n${dividerLine}`;
   } else if (quotaData && quotaData.unavailableReason) {
     const dividerLine = `  ${gray}${glyph.hbar.repeat(columnWidth * 2 + 1)}${reset}`;
     const reasonMessages = {
@@ -311,4 +380,5 @@ function renderHUD(state, agyData, config, quotaData, tierName) {
 module.exports = {
   renderHUD,
   abbreviateDisplayName,
+  compactModelName,
 };

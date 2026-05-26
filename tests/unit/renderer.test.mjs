@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert';
-import { renderHUD, abbreviateDisplayName } from '../../runtime/renderer.js';
+import { renderHUD, abbreviateDisplayName, compactModelName } from '../../runtime/renderer.js';
 
 test('renderHUD should contain branch and steps', () => {
   const state = {
@@ -312,4 +312,68 @@ test('abbreviateDisplayName handles hypothetical future models', () => {
   assert.equal(abbreviateDisplayName('Gemini 4.0 Flash (High)'), 'Gem 4.0 Flash(H)');
   assert.equal(abbreviateDisplayName('Claude Haiku 5.0 (Thinking)'), 'Haiku 5.0(Th)');
   assert.equal(abbreviateDisplayName('GPT-OSS 200B (Low)'), 'GPT-OSS 200B');
+});
+
+test('compactModelName produces ultra-short names for provider summary', () => {
+  assert.equal(compactModelName('Gemini 3.5 Flash (High)'), 'Flash(H)');
+  assert.equal(compactModelName('Gemini 3.5 Flash (Medium)'), 'Flash(M)');
+  assert.equal(compactModelName('Gemini 3.1 Pro (Low)'), 'Pro(L)');
+  assert.equal(compactModelName('Claude Sonnet 4.6 (Thinking)'), 'Sonnet');
+  assert.equal(compactModelName('Claude Opus 4.6 (Thinking)'), 'Opus');
+  assert.equal(compactModelName('GPT-OSS 120B (Medium)'), 'GPT');
+});
+
+test('renderHUD compact mode appends current model quota to line 2', () => {
+  const state = { steps: 5, branch: 'dev' };
+  const agyData = {
+    context_window: { total_input_tokens: 1000, total_output_tokens: 200, used_percentage: 5 },
+    model: { display_name: 'Claude Sonnet 4.6 (Thinking)' }
+  };
+  const quotaData = [
+    { id: 'claude-sonnet-4-6', displayName: 'Claude Sonnet 4.6 (Thinking)', modelProvider: 'MODEL_PROVIDER_ANTHROPIC', remainingFraction: 0.2, resetTime: new Date(Date.now() + 4 * 86400000).toISOString() },
+    { id: 'gemini-3-flash-agent', displayName: 'Gemini 3.5 Flash (High)', modelProvider: 'MODEL_PROVIDER_GOOGLE', remainingFraction: 1, resetTime: new Date(Date.now() + 3600000).toISOString() },
+  ];
+  const config = { display: { quotaStyle: 'compact', unicode: false } };
+  const output = renderHUD(state, agyData, config, quotaData);
+
+  assert.match(output, /Quota: 20%/);
+  assert.match(output, /Anthropic:/);
+  assert.match(output, /Google:/);
+  assert.doesNotMatch(output, /─{10}/);
+});
+
+test('renderHUD compact mode renders provider-grouped mini bars', () => {
+  const state = { steps: 1, branch: 'main' };
+  const agyData = {
+    context_window: { total_input_tokens: 0, total_output_tokens: 0, used_percentage: 0 },
+    model: { display_name: 'Gemini 3.5 Flash (High)' }
+  };
+  const quotaData = [
+    { id: 'gemini-3-flash-agent', displayName: 'Gemini 3.5 Flash (High)', modelProvider: 'MODEL_PROVIDER_GOOGLE', remainingFraction: 1, resetTime: null },
+    { id: 'gemini-3.1-pro-low', displayName: 'Gemini 3.1 Pro (Low)', modelProvider: 'MODEL_PROVIDER_GOOGLE', remainingFraction: 0.5, resetTime: null },
+    { id: 'claude-sonnet-4-6', displayName: 'Claude Sonnet 4.6 (Thinking)', modelProvider: 'MODEL_PROVIDER_ANTHROPIC', remainingFraction: 0.2, resetTime: null },
+    { id: 'gpt-oss-120b-medium', displayName: 'GPT-OSS 120B (Medium)', modelProvider: 'MODEL_PROVIDER_OPENAI', remainingFraction: 0.8, resetTime: null },
+  ];
+  const config = { display: { quotaStyle: 'compact', unicode: true } };
+  const output = renderHUD(state, agyData, config, quotaData);
+
+  assert.match(output, /Google:.*Flash\(H\).*Pro\(L\)/);
+  assert.match(output, /Anthropic:.*Sonnet/);
+  assert.match(output, /OpenAI:.*GPT/);
+});
+
+test('renderHUD table mode is unchanged with quotaStyle unset', () => {
+  const state = { steps: 1, branch: 'main' };
+  const agyData = {
+    context_window: { total_input_tokens: 0, total_output_tokens: 0, used_percentage: 0 }
+  };
+  const quotaData = [
+    { id: 'gemini-3-flash-agent', displayName: 'Gemini 3.5 Flash (High)', remainingFraction: 1, resetTime: null },
+  ];
+  const config = { display: { unicode: true } };
+  const output = renderHUD(state, agyData, config, quotaData);
+
+  assert.match(output, /─+/);
+  assert.match(output, /Gem 3\.5 Flash\(H\)/);
+  assert.doesNotMatch(output, /Google:/);
 });

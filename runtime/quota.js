@@ -121,6 +121,7 @@ function normalizeQuotaModels(models, interestingModelIds = FALLBACK_AGENT_MODEL
     results.push({
       id,
       displayName: m.displayName || id,
+      modelProvider: m.modelProvider || null,
       remainingFraction: normalizeRemainingFraction(qi.remainingFraction, !!qi.resetTime),
       resetTime: qi.resetTime || null,
     });

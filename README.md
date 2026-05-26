@@ -179,7 +179,8 @@ Optional. Create `agy-hud.config.json` at the workspace root to override default
 {
   "display": {
     "useNerdFonts": false,
-    "columnWidth": 37
+    "columnWidth": 37,
+    "quotaStyle": "table"
   },
   "thresholds": {
     "warning": 0.7,
