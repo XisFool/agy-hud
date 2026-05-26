@@ -202,11 +202,20 @@ function renderHUD(state, agyData, config, quotaData, tierName) {
     `${yellow}${taskIcon}Tasks: ${tasks}${reset}`
   ].join(divider);
 
-  const currentUsage = usage.current_usage || {};
-  const cacheRead = currentUsage.cache_read_input_tokens
-    || usage.cache_read_input_tokens
-    || 0;
-  let inTokens = currentUsage.input_tokens;
+  const firstNumber = (...values) => values.find(value => Number.isFinite(value));
+  const agyCurrentUsage = usage.current_usage || {};
+  const transcriptUsage = state?.usage || {};
+  const transcriptCurrentUsage = transcriptUsage.current_usage || {};
+  const cacheRead = firstNumber(
+    agyCurrentUsage.cache_read_input_tokens,
+    usage.cache_read_input_tokens,
+    transcriptCurrentUsage.cache_read_input_tokens,
+    transcriptUsage.cache_read_input_tokens
+  ) ?? 0;
+  let inTokens = firstNumber(
+    agyCurrentUsage.input_tokens,
+    transcriptCurrentUsage.input_tokens
+  );
   if (inTokens === undefined) {
     inTokens = Math.max(0, totalInput - cacheRead);
   }

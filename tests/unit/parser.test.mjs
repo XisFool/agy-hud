@@ -39,6 +39,37 @@ test('getSessionState reads the highest transcript step index', async () => {
   }
 });
 
+test('getSessionState captures context window token usage from transcript lines', async () => {
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'agy-hud-parser-usage-'));
+  try {
+    const transcriptPath = path.join(tempDir, 'transcript.jsonl');
+    fs.writeFileSync(transcriptPath, [
+      JSON.stringify({ step_index: 1 }),
+      JSON.stringify({
+        step_index: 2,
+        context_window: {
+          total_input_tokens: 138206000,
+          total_output_tokens: 202000,
+          current_usage: {
+            input_tokens: 6000,
+            cache_read_input_tokens: 138200000
+          }
+        }
+      }),
+      '',
+    ].join('\n'));
+
+    const state = await getSessionState(transcriptPath);
+
+    assert.equal(state.usage.total_input_tokens, 138206000);
+    assert.equal(state.usage.total_output_tokens, 202000);
+    assert.equal(state.usage.current_usage.input_tokens, 6000);
+    assert.equal(state.usage.current_usage.cache_read_input_tokens, 138200000);
+  } finally {
+    fs.rmSync(tempDir, { recursive: true, force: true });
+  }
+});
+
 test('getSessionState falls back outside git repositories without stderr noise', () => {
   const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'agy-hud-parser-non-git-'));
   const script = `

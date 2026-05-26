@@ -57,6 +57,30 @@ test('renderHUD should correctly display detailed tokens with cache read statist
   assert.match(output, /Tokens: 551\.4k \(in: 1\.9k, out: 358\.4k, cache: 191k\)/);
 });
 
+test('renderHUD should fall back to transcript token usage for cache breakdown', () => {
+  const state = {
+    steps: 5,
+    branch: 'main',
+    usage: {
+      current_usage: {
+        input_tokens: 6000,
+        cache_read_input_tokens: 138200000
+      }
+    }
+  };
+  const agyData = {
+    context_window: {
+      total_input_tokens: 138206000,
+      total_output_tokens: 202000,
+      used_percentage: 18.1,
+      context_window_size: 1048576
+    }
+  };
+
+  const output = renderHUD(state, agyData, { display: { useNerdFonts: false, unicode: true } });
+  assert.match(output, /Tokens: 138\.4M \(in: 6k, out: 202k, cache: 138\.2M\)/);
+});
+
 test('renderHUD preserves model name suffixes when applying display aliases', () => {
   const output = renderHUD(
     { steps: 1, branch: 'main' },
