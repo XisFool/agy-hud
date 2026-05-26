@@ -140,8 +140,18 @@ function renderHUD(state, agyData, config, quotaData, tierName) {
   const modelName = simplifyModelName(rawModelName);
 
   const formatTokens = (n) => {
-    if (n >= 1000000) return (n / 1000000).toFixed(1) + 'M';
-    if (n >= 1000) return (n / 1000).toFixed(1) + 'k';
+    if (n >= 1000000) {
+      const val = n / 1000000;
+      let str = val.toFixed(1);
+      if (str.endsWith('.0')) str = str.slice(0, -2);
+      return str + 'M';
+    }
+    if (n >= 1000) {
+      const val = n / 1000;
+      let str = val.toFixed(1);
+      if (str.endsWith('.0')) str = str.slice(0, -2);
+      return str + 'k';
+    }
     return n.toString();
   };
 
@@ -192,7 +202,27 @@ function renderHUD(state, agyData, config, quotaData, tierName) {
     `${yellow}${taskIcon}Tasks: ${tasks}${reset}`
   ].join(divider);
 
-  const tokensStr = `${cyan}${tokenIcon}Tokens: ${formatTokens(totalInput)}/${formatTokens(totalOutput)}${reset}`;
+  const firstNumber = (...values) => values.find(value => Number.isFinite(value));
+  const agyCurrentUsage = usage.current_usage || {};
+  const transcriptUsage = state?.usage || {};
+  const transcriptCurrentUsage = transcriptUsage.current_usage || {};
+  const cacheRead = firstNumber(
+    agyCurrentUsage.cache_read_input_tokens,
+    usage.cache_read_input_tokens,
+    transcriptCurrentUsage.cache_read_input_tokens,
+    transcriptUsage.cache_read_input_tokens
+  ) ?? 0;
+  let inTokens = firstNumber(
+    agyCurrentUsage.input_tokens,
+    transcriptCurrentUsage.input_tokens
+  );
+  if (inTokens === undefined) {
+    inTokens = Math.max(0, totalInput - cacheRead);
+  }
+  const outTokens = totalOutput;
+  const tokenTotal = inTokens + outTokens + cacheRead;
+
+  const tokensStr = `${cyan}${tokenIcon}Tokens: ${formatTokens(tokenTotal)} (in: ${formatTokens(inTokens)}, out: ${formatTokens(outTokens)}, cache: ${formatTokens(cacheRead)})${reset}`;
   const ctxStr = `${cyan}${ctxIcon}Ctx: ${formatTokens(totalInput)}/${formatTokens(usage.context_window_size || 0)}${reset}`;
   const ctxBar = createProgressBar(ctxPercent, cyan, 10, true);
   const modelStr = `${green}${modelIcon}Model: ${modelName}${reset}`;
