@@ -20,24 +20,27 @@ const DEFAULT_THRESHOLDS = {
 const DEFAULT_COLUMN_WIDTH = 37;
 const QUOTA_CHROME_WIDTH = 21;
 
-const MODEL_DISPLAY_ALIASES = {
-  'Gemini 3.5 Flash (High)': 'Gem 3.5 Flash(H)',
-  'Gemini 3.5 Flash (Medium)': 'Gem 3.5 Flash(M)',
-  'Gemini 3.5 Flash (Low)': 'Gem 3.5 Flash(L)',
-  'Gemini 3.1 Pro (High)': 'Gem 3.1 Pro(H)',
-  'Gemini 3.1 Pro (Low)': 'Gem 3.1 Pro(L)',
-  'Claude Sonnet 4.6 (Thinking)': 'Sonnet 4.6(Th)',
-  'Claude Opus 4.6 (Thinking)': 'Opus 4.6(Th)',
-  'GPT-OSS 120B (Medium)': 'GPT-OSS 120B',
-};
+const TIER_ABBREVS = { Thinking: 'Th', High: 'H', Medium: 'M', Low: 'L' };
+
+const ABBREVIATION_RULES = [
+  [/^Gemini (\d+\.\d+) (Flash|Pro) \((\w+)\)/, (_, ver, fam, tier) =>
+    `Gem ${ver} ${fam}(${TIER_ABBREVS[tier] || tier[0]})`],
+  [/^Claude (\w+) ([\d.]+) \((\w+)\)/, (_, fam, ver, tier) =>
+    `${fam} ${ver}(${TIER_ABBREVS[tier] || tier[0]})`],
+  [/^GPT-OSS (.+?) \(\w+\)/, (_, spec) => `GPT-OSS ${spec}`],
+];
+
+function abbreviateDisplayName(name) {
+  for (const [re, replacer] of ABBREVIATION_RULES) {
+    const m = re.exec(name);
+    if (m) return name.replace(re, replacer);
+  }
+  return name;
+}
 
 function simplifyModelName(name) {
   if (!name) return '';
-  let simplified = name;
-  for (const [source, alias] of Object.entries(MODEL_DISPLAY_ALIASES)) {
-    simplified = simplified.replace(source, alias);
-  }
-  return simplified;
+  return abbreviateDisplayName(name);
 }
 
 /**
@@ -306,5 +309,6 @@ function renderHUD(state, agyData, config, quotaData, tierName) {
 }
 
 module.exports = {
-  renderHUD
+  renderHUD,
+  abbreviateDisplayName,
 };
