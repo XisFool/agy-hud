@@ -72,6 +72,9 @@ async function startWizard() {
     }
   }
 
+  // Save original theme so cycling back to Custom restores it
+  const originalTheme = { ...config.theme };
+
   // State of the interactive menu
   const localExists = fs.existsSync(getLocalConfigPath());
   let targetIsGlobal = !localExists;
@@ -93,7 +96,9 @@ async function startWizard() {
         const keys = Object.keys(THEME_PRESETS).concat(['Custom']);
         const idx = keys.indexOf(themeName);
         themeName = keys[(idx + 1) % keys.length];
-        if (themeName !== 'Custom') {
+        if (themeName === 'Custom') {
+          config.theme = { ...originalTheme };
+        } else {
           config.theme = { ...THEME_PRESETS[themeName] };
         }
       }
@@ -244,7 +249,7 @@ async function startWizard() {
   // Initial render
   renderMenu();
 
-  process.stdin.on('keypress', (str, key) => {
+  process.stdin.on('keypress', async (str, key) => {
     if (key.ctrl && key.name === 'c') {
       cleanup();
       process.exit(1);
@@ -257,7 +262,13 @@ async function startWizard() {
       selectedIdx = (selectedIdx + 1) % menuItems.length;
       renderMenu();
     } else if (key.name === 'space' || key.name === 'return' || key.name === 'enter') {
-      menuItems[selectedIdx].toggle();
+      try {
+        await menuItems[selectedIdx].toggle();
+      } catch (err) {
+        cleanup();
+        console.error(`\n\x1b[31mError: ${err.message}\x1b[0m\n`);
+        process.exit(1);
+      }
       renderMenu();
     } else if (/[0-9]/.test(str)) {
       const num = parseInt(str, 10);

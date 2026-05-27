@@ -132,6 +132,10 @@ test('release package contract ships agent skills', () => {
     'package.json',
   ]);
   assert.match(releaseScript, /skills/);
+  assert.ok(
+    fs.existsSync(path.join(projectRoot, 'skills', 'hud-config', 'SKILL.md')),
+    'skills/hud-config/SKILL.md must exist so the agent can load the config skill'
+  );
 });
 
 test('package does not keep obsolete local HTTP server helpers', () => {

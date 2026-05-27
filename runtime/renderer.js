@@ -198,15 +198,20 @@ function renderHUD(state, agyData, config, quotaData, tierName) {
     modelIcon = '[M] ';
   }
 
-  // Override via config.icons if present
+  // Override via config.icons if present — strip control/escape sequences first
   if (config && config.icons) {
-    if (config.icons.branch !== undefined) branchIcon = config.icons.branch;
-    if (config.icons.plan !== undefined) planIcon = config.icons.plan;
-    if (config.icons.step !== undefined) stepIcon = config.icons.step;
-    if (config.icons.task !== undefined) taskIcon = config.icons.task;
-    if (config.icons.token !== undefined) tokenIcon = config.icons.token;
-    if (config.icons.ctx !== undefined) ctxIcon = config.icons.ctx;
-    if (config.icons.model !== undefined) modelIcon = config.icons.model;
+    const sanitizeIcon = (v) => String(v)
+      .replace(/\x1b\][^\x07]*(?:\x07|\x1b\\)/g, '')
+      .replace(/\x1b\[[0-?]*[ -/]*[@-~]/g, '')
+      .replace(/[\x00-\x1f\x7f]/g, '')
+      .slice(0, 8);
+    if (config.icons.branch !== undefined) branchIcon = sanitizeIcon(config.icons.branch);
+    if (config.icons.plan !== undefined) planIcon = sanitizeIcon(config.icons.plan);
+    if (config.icons.step !== undefined) stepIcon = sanitizeIcon(config.icons.step);
+    if (config.icons.task !== undefined) taskIcon = sanitizeIcon(config.icons.task);
+    if (config.icons.token !== undefined) tokenIcon = sanitizeIcon(config.icons.token);
+    if (config.icons.ctx !== undefined) ctxIcon = sanitizeIcon(config.icons.ctx);
+    if (config.icons.model !== undefined) modelIcon = sanitizeIcon(config.icons.model);
   }
 
   const branchName = `${blue}${branchIcon}${state.branch || 'unknown'}${reset}`;
