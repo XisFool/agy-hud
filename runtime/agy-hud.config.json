@@ -11,7 +11,8 @@
     "showGitBranch": true,
     "showCurrentDir": true,
     "breadcrumbCount": 3,
-    "useNerdFonts": false
+    "useNerdFonts": false,
+    "showUsername": true
   },
   "thresholds": {
     "warning": 0.7,
