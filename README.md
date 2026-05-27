@@ -207,6 +207,8 @@ Optional. Create `agy-hud.config.json` at the workspace root to override default
     "showBreadcrumbs": true,
     "showGitBranch": true,
     "showCurrentDir": true,
+    "showUsername": false,
+    "username": "",
     "breadcrumbCount": 3,
     "useNerdFonts": false,
     "columnWidth": 40
@@ -227,6 +229,8 @@ Optional. Create `agy-hud.config.json` at the workspace root to override default
   - `showBreadcrumbs`: Whether to display workspace file breadcrumbs.
   - `showGitBranch`: Whether to display the current Git branch.
   - `showCurrentDir`: Whether to display the base name of the current working directory.
+  - `showUsername`: Whether to display the username/email at the start of the HUD statusline.
+  - `username`: A custom string to override the resolved OS or login username/email.
   - `breadcrumbCount`: Number of files to show in breadcrumbs.
   - `useNerdFonts`: Set to `true` to use premium developer icons from [Nerd Fonts](https://www.nerdfonts.com/).
   - `columnWidth`: Max column width for the quota table layout (defaults to `40`).

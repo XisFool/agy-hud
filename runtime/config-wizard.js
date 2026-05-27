@@ -152,6 +152,14 @@ async function startWizard() {
       }
     },
     {
+      key: 'showUsername',
+      label: 'Show Username',
+      getValue: () => (config.display.showUsername === true ? 'Enabled' : 'Disabled'),
+      toggle: () => {
+        config.display.showUsername = config.display.showUsername === true ? false : true;
+      }
+    },
+    {
       key: 'showTokens',
       label: 'Show Token Bar',
       getValue: () => (config.display.showTokenBar !== false ? 'Enabled' : 'Disabled'),

@@ -166,8 +166,38 @@ async function getSessionState(transcriptPath) {
     }
   } catch {}
 
+function getOauthCredsEmail() {
+  try {
+    const home = process.env.HOME || process.env.USERPROFILE || os.homedir();
+    const credsPath = path.join(home, '.gemini', 'oauth_creds.json');
+    if (fs.existsSync(credsPath)) {
+      const raw = JSON.parse(fs.readFileSync(credsPath, 'utf8'));
+      if (raw.id_token) {
+        const parts = raw.id_token.split('.');
+        if (parts.length === 3) {
+          const payload = JSON.parse(Buffer.from(parts[1], 'base64').toString());
+          if (payload && payload.email) {
+            return payload.email;
+          }
+        }
+      }
+    }
+  } catch {}
+  return null;
+}
+
+function getFallbackUsername() {
+  try {
+    const userInfo = os.userInfo();
+    return userInfo.username || '';
+  } catch {
+    return '';
+  }
+}
+
+  const username = getOauthCredsEmail() || getFallbackUsername();
   const currentDir = path.basename(cwd);
-  const state = { steps, branch, memoryFile, rulesCount, mcpCount, hooksCount, currentDir };
+  const state = { steps, branch, memoryFile, rulesCount, mcpCount, hooksCount, currentDir, username };
   if (usage) state.usage = usage;
   return state;
 }

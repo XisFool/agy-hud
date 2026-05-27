@@ -139,6 +139,7 @@ function renderHUD(state, agyData, config, quotaData, tierName) {
   const showTokenBar = display.showTokenBar !== false;
   const showBreadcrumbs = display.showBreadcrumbs !== false;
   const showCurrentDir = display.showCurrentDir !== false;
+  const showUsername = display.showUsername === true;
   const text = LANGUAGE_TEXT[resolveLanguage(config)];
 
   // ANSI escape sequences
@@ -307,6 +308,10 @@ function renderHUD(state, agyData, config, quotaData, tierName) {
   const currentDir = sanitizeTerminalText(state.currentDir || '', 80);
   if (showCurrentDir && currentDir) {
     line1Parts.unshift(`${blue}${currentDir}${reset}`);
+  }
+  const username = sanitizeTerminalText(display.username || state.username || '', 80);
+  if (showUsername && username) {
+    line1Parts.unshift(`${cyan}${username}${reset}`);
   }
   const line1 = line1Parts.join(divider);
 

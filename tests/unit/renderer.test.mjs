@@ -449,6 +449,79 @@ test('renderHUD sanitizes current directory before terminal output', () => {
   assert.doesNotMatch(output, /\x1b\[5m/);
 });
 
+test('renderHUD displays username when showUsername is true', () => {
+  const state = {
+    steps: 1,
+    branch: 'main',
+    username: 'shetterelland@gmail.com',
+  };
+  const agyData = {
+    context_window: { total_input_tokens: 0, total_output_tokens: 0, used_percentage: 0 }
+  };
+
+  // Test with showUsername = true
+  const output1 = renderHUD(state, agyData, {
+    display: {
+      showUsername: true,
+      unicode: false
+    }
+  });
+  assert.match(output1, /shetterelland@gmail\.com/);
+
+  // Test with showUsername = false (default behavior)
+  const output2 = renderHUD(state, agyData, {
+    display: {
+      showUsername: false,
+      unicode: false
+    }
+  });
+  assert.doesNotMatch(output2, /shetterelland@gmail\.com/);
+});
+
+test('renderHUD respects custom config username over state username', () => {
+  const state = {
+    steps: 1,
+    branch: 'main',
+    username: 'shetterelland@gmail.com',
+  };
+  const agyData = {
+    context_window: { total_input_tokens: 0, total_output_tokens: 0, used_percentage: 0 }
+  };
+
+  const output = renderHUD(state, agyData, {
+    display: {
+      showUsername: true,
+      username: 'custom-user',
+      unicode: false
+    }
+  });
+  assert.match(output, /custom-user/);
+  assert.doesNotMatch(output, /shetterelland@gmail\.com/);
+});
+
+test('renderHUD sanitizes username before terminal output', () => {
+  const state = {
+    steps: 1,
+    branch: 'main',
+    username: 'user\x1b]52;c;SGVsbG8=\x07\x1b[5mblink',
+  };
+  const agyData = {
+    context_window: { total_input_tokens: 0, total_output_tokens: 0, used_percentage: 0 }
+  };
+
+  const output = renderHUD(state, agyData, {
+    display: {
+      showUsername: true,
+      unicode: false
+    }
+  });
+
+  assert.match(output, /user/);
+  assert.doesNotMatch(output, /\x1b\]52/);
+  assert.doesNotMatch(output, /\x07/);
+  assert.doesNotMatch(output, /\x1b\[5m/);
+});
+
 test('renderHUD limits breadcrumb metadata by breadcrumbCount', () => {
   const state = {
     steps: 1,

@@ -220,3 +220,52 @@ test('getSessionState falls back outside git repositories without stderr noise',
   assert.equal(parsed.steps, 0);
   assert.equal(parsed.branch, 'main');
 });
+
+test('getSessionState resolves username from id_token in oauth_creds.json', async () => {
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'agy-hud-parser-username-'));
+  const originalHome = process.env.HOME;
+  const originalUserProfile = process.env.USERPROFILE;
+  process.env.HOME = tempDir;
+  process.env.USERPROFILE = tempDir;
+
+  try {
+    const geminiDir = path.join(tempDir, '.gemini');
+    fs.mkdirSync(geminiDir, { recursive: true });
+
+    // Mock an ID token with an email claim: shetterelland@gmail.com
+    const header = Buffer.from(JSON.stringify({ alg: 'RS256' })).toString('base64').replace(/=/g, '').replace(/\+/g, '-').replace(/\//g, '_');
+    const payload = Buffer.from(JSON.stringify({ email: 'shetterelland@gmail.com' })).toString('base64').replace(/=/g, '').replace(/\+/g, '-').replace(/\//g, '_');
+    const signature = 'dummy-sig';
+    const mockIdToken = `${header}.${payload}.${signature}`;
+
+    fs.writeFileSync(path.join(geminiDir, 'oauth_creds.json'), JSON.stringify({
+      id_token: mockIdToken
+    }));
+
+    const state = await getSessionState('missing-transcript-nonexistent.jsonl');
+    assert.strictEqual(state.username, 'shetterelland@gmail.com');
+  } finally {
+    process.env.HOME = originalHome;
+    process.env.USERPROFILE = originalUserProfile;
+    fs.rmSync(tempDir, { recursive: true, force: true });
+  }
+});
+
+test('getSessionState falls back to OS username if oauth_creds.json is invalid or missing', async () => {
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'agy-hud-parser-username-fallback-'));
+  const originalHome = process.env.HOME;
+  const originalUserProfile = process.env.USERPROFILE;
+  process.env.HOME = tempDir;
+  process.env.USERPROFILE = tempDir;
+
+  try {
+    const state = await getSessionState('missing-transcript-nonexistent.jsonl');
+    assert.strictEqual(typeof state.username, 'string');
+    assert.ok(state.username.length > 0);
+    assert.strictEqual(state.username, os.userInfo().username);
+  } finally {
+    process.env.HOME = originalHome;
+    process.env.USERPROFILE = originalUserProfile;
+    fs.rmSync(tempDir, { recursive: true, force: true });
+  }
+});

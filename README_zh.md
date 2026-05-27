@@ -207,6 +207,8 @@ powershell -ExecutionPolicy Bypass -Command "irm https://raw.githubusercontent.c
     "showBreadcrumbs": true,
     "showGitBranch": true,
     "showCurrentDir": true,
+    "showUsername": false,
+    "username": "",
     "breadcrumbCount": 3,
     "useNerdFonts": false,
     "columnWidth": 40
@@ -227,6 +229,8 @@ powershell -ExecutionPolicy Bypass -Command "irm https://raw.githubusercontent.c
   - `showBreadcrumbs`：是否展示工作区文件导航（Breadcrumbs）。
   - `showGitBranch`：是否在 HUD 中显示当前 Git 分支。
   - `showCurrentDir`：是否在 HUD 中显示当前工作目录的文件夹名称。
+  - `showUsername`：是否在 HUD 第一行显示用户名/登录邮箱。
+  - `username`：自定义显示用户名以覆盖系统用户名或登录邮箱。
   - `breadcrumbCount`：导航栏中最多展示的文件项数。
   - `useNerdFonts`：开启后（设为 `true`），将使用 [Nerd Fonts](https://www.nerdfonts.com/) 的高保真开发者图标，体验更佳。
   - `columnWidth`：Table 模式下每一列的最大宽度（默认为 `40`）。
