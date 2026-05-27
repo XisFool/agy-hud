@@ -426,6 +426,29 @@ test('renderHUD should correctly render current directory', () => {
   assert.doesNotMatch(output2, /my-project-dir/);
 });
 
+test('renderHUD sanitizes current directory before terminal output', () => {
+  const state = {
+    steps: 1,
+    branch: 'main',
+    currentDir: 'repo\x1b]52;c;SGVsbG8=\x07\x1b[5mblink',
+  };
+  const agyData = {
+    context_window: { total_input_tokens: 0, total_output_tokens: 0, used_percentage: 0 }
+  };
+
+  const output = renderHUD(state, agyData, {
+    display: {
+      showCurrentDir: true,
+      unicode: false
+    }
+  });
+
+  assert.match(output, /repo/);
+  assert.doesNotMatch(output, /\x1b\]52/);
+  assert.doesNotMatch(output, /\x07/);
+  assert.doesNotMatch(output, /\x1b\[5m/);
+});
+
 test('renderHUD limits breadcrumb metadata by breadcrumbCount', () => {
   const state = {
     steps: 1,
@@ -596,4 +619,3 @@ test('renderHUD uses warning/critical colors for both percent text and progress 
   // Assert red color code \x1b[31m prefix on progress bar
   assert.match(output, /\x1b\[31m\[/);
 });
-

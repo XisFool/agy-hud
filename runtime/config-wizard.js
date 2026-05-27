@@ -52,10 +52,10 @@ const THEME_PRESETS = {
 
 async function startWizard() {
   const currentConfig = await loadConfig();
-  
+
   // Clone current config safely
   const config = JSON.parse(JSON.stringify(currentConfig));
-  
+
   // Pre-fill display if not exist
   config.display = config.display || {};
   config.theme = config.theme || { primary: 'green', secondary: 'gray', warning: 'yellow', critical: 'red' };
@@ -228,7 +228,7 @@ async function startWizard() {
       const marker = isSelected ? '\x1b[32m▸ \x1b[0m' : '  ';
       const labelStr = isSelected ? `\x1b[1m${item.label}\x1b[0m` : item.label;
       const valStr = item.getValue() ? `: \x1b[36m${item.getValue()}\x1b[0m` : '';
-      
+
       let actionMarker = '';
       if (item.key === 'save') {
         actionMarker = isSelected ? '\x1b[32m[ Save ]\x1b[0m' : '[ Save ]';
@@ -243,7 +243,7 @@ async function startWizard() {
 
     console.log('\n\x1b[90m─────────────────────────────────────────────────────────────────────────────────\x1b[0m');
     console.log('\x1b[1mHUD PREVIEW:\x1b[0m');
-    
+
     // Live render HUD preview
     try {
       const hudPreview = renderHUD(mockState, mockAgyData, config, mockQuotaData, 'Pro');
