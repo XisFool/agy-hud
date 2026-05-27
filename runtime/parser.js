@@ -4,6 +4,45 @@ const os = require('os');
 const { execFileSync } = require('child_process');
 const { resolveSafeExecutable, resolveAntigravityPath } = require('./paths.js');
 
+/**
+ * Reads the local oauth_creds.json and extracts the email from the id_token payload.
+ * Display-only: the local file is trusted as-is; the JWT signature is NOT verified.
+ * @returns {string|null}
+ */
+function getOauthCredsEmail() {
+  try {
+    const home = process.env.HOME || process.env.USERPROFILE || os.homedir();
+    const credsPath = path.join(home, '.gemini', 'oauth_creds.json');
+    if (fs.existsSync(credsPath)) {
+      const raw = JSON.parse(fs.readFileSync(credsPath, 'utf8'));
+      if (raw.id_token) {
+        const parts = raw.id_token.split('.');
+        if (parts.length === 3) {
+          // Base64url decode the payload section (index 1). Signature is NOT verified.
+          const payload = JSON.parse(Buffer.from(parts[1], 'base64').toString());
+          if (payload && payload.email) {
+            return payload.email;
+          }
+        }
+      }
+    }
+  } catch {}
+  return null;
+}
+
+/**
+ * Falls back to the OS username when no OAuth credentials are available.
+ * @returns {string}
+ */
+function getFallbackUsername() {
+  try {
+    const userInfo = os.userInfo();
+    return userInfo.username || '';
+  } catch {
+    return '';
+  }
+}
+
 function isObject(value) {
   return value !== null && typeof value === 'object' && !Array.isArray(value);
 }
@@ -165,35 +204,6 @@ async function getSessionState(transcriptPath) {
       }
     }
   } catch {}
-
-function getOauthCredsEmail() {
-  try {
-    const home = process.env.HOME || process.env.USERPROFILE || os.homedir();
-    const credsPath = path.join(home, '.gemini', 'oauth_creds.json');
-    if (fs.existsSync(credsPath)) {
-      const raw = JSON.parse(fs.readFileSync(credsPath, 'utf8'));
-      if (raw.id_token) {
-        const parts = raw.id_token.split('.');
-        if (parts.length === 3) {
-          const payload = JSON.parse(Buffer.from(parts[1], 'base64').toString());
-          if (payload && payload.email) {
-            return payload.email;
-          }
-        }
-      }
-    }
-  } catch {}
-  return null;
-}
-
-function getFallbackUsername() {
-  try {
-    const userInfo = os.userInfo();
-    return userInfo.username || '';
-  } catch {
-    return '';
-  }
-}
 
   const username = getOauthCredsEmail() || getFallbackUsername();
   const currentDir = path.basename(cwd);

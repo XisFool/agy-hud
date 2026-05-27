@@ -14,7 +14,6 @@ const projectRoot = path.resolve(__dirname, '..', '..');
 test('getSessionState should initialize state properly even for missing files', async () => {
   assert.strictEqual(typeof getSessionState, 'function');
   const state = await getSessionState('missing-transcript-nonexistent.jsonl');
-  const path = await import('path');
   assert.strictEqual(state.currentDir, path.basename(process.cwd()));
 });
 

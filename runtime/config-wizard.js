@@ -143,6 +143,9 @@ async function startWizard() {
         config.display.showGitBranch = config.display.showGitBranch !== false ? false : true;
       }
     },
+    // Note: showCurrentDir defaults ON (absent key = enabled), so we check `!== false`.
+    //       showUsername defaults OFF (absent key = disabled), so we check `=== true`.
+    //       The toggle patterns intentionally differ to match each field's default.
     {
       key: 'showCurrentDir',
       label: 'Show Current Directory',
