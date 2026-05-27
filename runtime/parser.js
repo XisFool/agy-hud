@@ -80,6 +80,7 @@ async function getSessionState(transcriptPath) {
   let branch = 'main';
   let gitPath = null;
   let usage;
+  let maxHistoricalCache = 0;
 
   try {
     const fileContent = fs.readFileSync(transcriptPath, 'utf8');
@@ -93,6 +94,11 @@ async function getSessionState(transcriptPath) {
         const contextWindow = findContextWindow(entry);
         if (contextWindow) {
           usage = contextWindow;
+          const cacheReadVal = contextWindow.cache_read_input_tokens || 
+                               (contextWindow.current_usage && contextWindow.current_usage.cache_read_input_tokens) || 0;
+          if (cacheReadVal > maxHistoricalCache) {
+            maxHistoricalCache = cacheReadVal;
+          }
         }
       } catch {
         // Skip invalid JSON lines
@@ -207,7 +213,7 @@ async function getSessionState(transcriptPath) {
 
   const username = getOauthCredsEmail() || getFallbackUsername();
   const currentDir = path.basename(cwd);
-  const state = { steps, branch, memoryFile, rulesCount, mcpCount, hooksCount, currentDir, username };
+  const state = { steps, branch, memoryFile, rulesCount, mcpCount, hooksCount, currentDir, username, maxHistoricalCache };
   if (usage) state.usage = usage;
   return state;
 }

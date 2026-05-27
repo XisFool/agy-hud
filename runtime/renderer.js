@@ -350,12 +350,26 @@ function renderHUD(state, agyData, config, quotaData, tierName) {
     inTokens = Math.max(0, inTokens - cacheTotal);
   }
   const outTokens = totalOutput;
-  const tokenTotal = inTokens + outTokens + cacheTotal;
+
+  // Apply cache smoothing adaption to absorb CLI truncation/fluctuation bugs
+  let displayCache = cacheTotal;
+  let displayIn = inTokens;
+  let isCacheSmoothApplied = false;
+
+  const maxHistCache = state.maxHistoricalCache || 0;
+  if (cacheTotal === 0 && maxHistCache > 10000 && inTokens >= maxHistCache * 0.9) {
+    displayCache = maxHistCache;
+    displayIn = Math.max(0, inTokens - maxHistCache);
+    isCacheSmoothApplied = true;
+  }
+
+  const tokenTotal = displayIn + outTokens + displayCache;
 
   // Compact token format: Tokens 150k (in: 127k, out: 23k, cache: Xk)
-  const detailParts = [`in: ${formatTokens(inTokens)}`, `out: ${formatTokens(outTokens)}`];
-  if (cacheTotal > 0) {
-    detailParts.push(`cache: ${formatTokens(cacheTotal)}`);
+  const detailParts = [`in: ${formatTokens(displayIn)}`, `out: ${formatTokens(outTokens)}`];
+  if (displayCache > 0) {
+    const cacheLabel = isCacheSmoothApplied ? `${formatTokens(displayCache)}*` : formatTokens(displayCache);
+    detailParts.push(`cache: ${cacheLabel}`);
   }
   const tokenParts = `${formatTokens(tokenTotal)} ${gray}(${reset}${detailParts.join(', ')}${gray})${reset}`;
   const tokenPrefix = tokenIcon === '[Tk] ' ? 'Tokens' : `${tokenIcon}Tokens`;
