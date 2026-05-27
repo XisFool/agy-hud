@@ -73,6 +73,12 @@ function modelNamesMatch(left, right) {
   return a === b || a.startsWith(`${b} `) || b.startsWith(`${a} `);
 }
 
+function modelIncludesCacheInInput(nameOrId) {
+  if (!nameOrId) return false;
+  const name = nameOrId.toLowerCase();
+  return name.includes('claude') || name.includes('sonnet') || name.includes('opus') || name.includes('haiku') || name.includes('gpt');
+}
+
 const PROVIDER_LABELS = {
   MODEL_PROVIDER_GOOGLE: 'Google',
   MODEL_PROVIDER_ANTHROPIC: 'Anthropic',
@@ -325,20 +331,30 @@ function renderHUD(state, agyData, config, quotaData, tierName) {
     transcriptCurrentUsage.cache_read_input_tokens,
     transcriptUsage.cache_read_input_tokens
   ) ?? 0;
+  const cacheWrite = firstNumber(
+    agyCurrentUsage.cache_creation_input_tokens,
+    usage.cache_creation_input_tokens,
+    transcriptCurrentUsage.cache_creation_input_tokens,
+    transcriptUsage.cache_creation_input_tokens
+  ) ?? 0;
+  const cacheTotal = cacheRead + cacheWrite;
+
   let inTokens = firstNumber(
     agyCurrentUsage.input_tokens,
     transcriptCurrentUsage.input_tokens
   );
   if (inTokens === undefined) {
-    inTokens = Math.max(0, totalInput - cacheRead);
+    inTokens = Math.max(0, totalInput - cacheTotal);
+  } else if (modelIncludesCacheInInput(rawModelName)) {
+    inTokens = Math.max(0, inTokens - cacheTotal);
   }
   const outTokens = totalOutput;
-  const tokenTotal = inTokens + outTokens + cacheRead;
+  const tokenTotal = inTokens + outTokens + cacheTotal;
 
   // Compact token format: Tokens 150k (in: 127k, out: 23k, cache: Xk)
   const detailParts = [`in: ${formatTokens(inTokens)}`, `out: ${formatTokens(outTokens)}`];
-  if (cacheRead > 0) {
-    detailParts.push(`cache: ${formatTokens(cacheRead)}`);
+  if (cacheTotal > 0) {
+    detailParts.push(`cache: ${formatTokens(cacheTotal)}`);
   }
   const tokenParts = `${formatTokens(tokenTotal)} ${gray}(${reset}${detailParts.join(', ')}${gray})${reset}`;
   const tokenPrefix = tokenIcon === '[Tk] ' ? 'Tokens' : `${tokenIcon}Tokens`;
