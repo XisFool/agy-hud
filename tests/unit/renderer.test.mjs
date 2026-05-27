@@ -164,6 +164,32 @@ test('renderHUD formatTokens correctly rounds boundary values to M/k without 100
   assert.match(output2, /in: 999\.9k/);
 });
 
+test('renderHUD applies cache smoothing adaption on temporary cache miss', () => {
+  const state = {
+    steps: 9,
+    branch: 'main',
+    maxHistoricalCache: 250000
+  };
+  const agyData = {
+    context_window: {
+      total_input_tokens: 258000,
+      total_output_tokens: 88700,
+      used_percentage: 25,
+      context_window_size: 1048576,
+      current_usage: {
+        input_tokens: 258000,
+        output_tokens: 88700,
+        cache_creation_input_tokens: 0,
+        cache_read_input_tokens: 0
+      }
+    }
+  };
+
+  const output = renderHUD(state, agyData, { display: { useNerdFonts: false, unicode: true } });
+  assert.match(output, /Tokens 346\.7k .*?\(.*?in: 8k, out: 88\.7k, cache: 250k\*.*?\)/);
+});
+
+
 test('renderHUD preserves model name suffixes when applying display aliases', () => {
   const output = renderHUD(
     { steps: 1, branch: 'main' },
