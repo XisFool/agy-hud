@@ -522,6 +522,30 @@ test('renderHUD sanitizes username before terminal output', () => {
   assert.doesNotMatch(output, /\x1b\[5m/);
 });
 
+test('renderHUD sanitizes username with terminated OSC sequence correctly without losing subsequent text', () => {
+  const state = {
+    steps: 1,
+    branch: 'main',
+    username: 'user\x1b]52;c;SGVsbG8=\x1b\\safe-suffix',
+  };
+  const agyData = {
+    context_window: { total_input_tokens: 0, total_output_tokens: 0, used_percentage: 0 }
+  };
+
+  const output = renderHUD(state, agyData, {
+    display: {
+      showUsername: true,
+      unicode: false
+    }
+  });
+
+  assert.match(output, /user/);
+  assert.match(output, /safe-suffix/);
+  assert.doesNotMatch(output, /\x1b\]52/);
+  assert.doesNotMatch(output, /\x1b\\/);
+});
+
+
 test('renderHUD limits breadcrumb metadata by breadcrumbCount', () => {
   const state = {
     steps: 1,
