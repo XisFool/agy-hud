@@ -565,3 +565,61 @@ test('renderHUD uses warning/critical colors for both percent text and progress 
   assert.match(output, /\x1b\[31m\[/);
 });
 
+test('renderHUD should correctly display cache for Claude models on cache creation', () => {
+  const state = { steps: 1, branch: 'main' };
+  const agyData = {
+    context_window: {
+      total_input_tokens: 92300,
+      total_output_tokens: 15900,
+      used_percentage: 37,
+      context_window_size: 250000,
+      current_usage: {
+        input_tokens: 99200,
+        output_tokens: 15900,
+        cache_creation_input_tokens: 92300,
+        cache_read_input_tokens: 0
+      }
+    },
+    model: {
+      display_name: 'Claude Sonnet 4.6 (Thinking)',
+      id: 'claude-sonnet-4-6'
+    }
+  };
+
+  const output = renderHUD(state, agyData, { display: { useNerdFonts: false, unicode: true } });
+  // Total tokens: in (99.2k - 92.3k = 6.9k) + out (15.9k) + cache (92.3k) = 115.1k ~ 115k
+  assert.match(output, /Tokens 115\.1k/);
+  assert.match(output, /in: 6\.9k/);
+  assert.match(output, /out: 15\.9k/);
+  assert.match(output, /cache: 92\.3k/);
+});
+
+test('renderHUD should correctly display cache for Claude models on cache read', () => {
+  const state = { steps: 1, branch: 'main' };
+  const agyData = {
+    context_window: {
+      total_input_tokens: 92300,
+      total_output_tokens: 15900,
+      used_percentage: 37,
+      context_window_size: 250000,
+      current_usage: {
+        input_tokens: 99200,
+        output_tokens: 15900,
+        cache_creation_input_tokens: 0,
+        cache_read_input_tokens: 92300
+      }
+    },
+    model: {
+      display_name: 'Claude Sonnet 4.6 (Thinking)',
+      id: 'claude-sonnet-4-6'
+    }
+  };
+
+  const output = renderHUD(state, agyData, { display: { useNerdFonts: false, unicode: true } });
+  // Total tokens: in (99.2k - 92.3k = 6.9k) + out (15.9k) + cache (92.3k) = 115.1k ~ 115k
+  assert.match(output, /Tokens 115\.1k/);
+  assert.match(output, /in: 6\.9k/);
+  assert.match(output, /out: 15\.9k/);
+  assert.match(output, /cache: 92\.3k/);
+});
+

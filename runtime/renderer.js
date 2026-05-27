@@ -73,6 +73,12 @@ function modelNamesMatch(left, right) {
   return a === b || a.startsWith(`${b} `) || b.startsWith(`${a} `);
 }
 
+function modelIncludesCacheInInput(nameOrId) {
+  if (!nameOrId) return false;
+  const name = nameOrId.toLowerCase();
+  return name.includes('claude') || name.includes('sonnet') || name.includes('opus') || name.includes('haiku') || name.includes('gpt');
+}
+
 const PROVIDER_LABELS = {
   MODEL_PROVIDER_GOOGLE: 'Google',
   MODEL_PROVIDER_ANTHROPIC: 'Anthropic',
@@ -109,6 +115,15 @@ function resolveLanguage(config, env = process.env) {
   return /^zh(?:_|-|$)/i.test(locale) ? 'zh' : 'en';
 }
 
+function sanitizeTerminalText(value, maxLength = 120) {
+  if (value === undefined || value === null) return '';
+  return String(value)
+    .replace(/\x1b\][^\x07]*?(?:\x07|\x1b\\|$)/g, '')
+    .replace(/\x1b\[[0-?]*[ -/]*[@-~]/g, '')
+    .replace(/[\x00-\x1f\x7f]/g, '')
+    .slice(0, maxLength);
+}
+
 /**
  * Renders the HUD string for the status line using native ANSI escape codes.
  * Falls back to ASCII when the terminal can't render box-drawing / Nerd Font
@@ -129,6 +144,8 @@ function renderHUD(state, agyData, config, quotaData, tierName) {
   const showGitBranch = display.showGitBranch !== false;
   const showTokenBar = display.showTokenBar !== false;
   const showBreadcrumbs = display.showBreadcrumbs !== false;
+  const showCurrentDir = display.showCurrentDir !== false;
+  const showUsername = display.showUsername === true;
   const text = LANGUAGE_TEXT[resolveLanguage(config)];
 
   // ANSI escape sequences
@@ -200,11 +217,7 @@ function renderHUD(state, agyData, config, quotaData, tierName) {
 
   // Override via config.icons if present — strip control/escape sequences first
   if (config && config.icons) {
-    const sanitizeIcon = (v) => String(v)
-      .replace(/\x1b\][^\x07]*(?:\x07|\x1b\\)/g, '')
-      .replace(/\x1b\[[0-?]*[ -/]*[@-~]/g, '')
-      .replace(/[\x00-\x1f\x7f]/g, '')
-      .slice(0, 8);
+    const sanitizeIcon = (v) => sanitizeTerminalText(v, 8);
     if (config.icons.branch !== undefined) branchIcon = sanitizeIcon(config.icons.branch);
     if (config.icons.plan !== undefined) planIcon = sanitizeIcon(config.icons.plan);
     if (config.icons.step !== undefined) stepIcon = sanitizeIcon(config.icons.step);
@@ -214,7 +227,7 @@ function renderHUD(state, agyData, config, quotaData, tierName) {
     if (config.icons.model !== undefined) modelIcon = sanitizeIcon(config.icons.model);
   }
 
-  const branchName = `${blue}${branchIcon}${state.branch || 'unknown'}${reset}`;
+  const branchName = `${blue}${branchIcon}${sanitizeTerminalText(state.branch || 'unknown', 80)}${reset}`;
 
   // Compact arrow glyphs for token breakdown
   const inArrow = unicode ? '↑' : '^';
@@ -226,12 +239,12 @@ function renderHUD(state, agyData, config, quotaData, tierName) {
   const totalInput = usage.total_input_tokens || 0;
   const totalOutput = usage.total_output_tokens || 0;
   const ctxPercent = usage.used_percentage || 0;
-  const plan = tierName || agyData?.plan_tier || 'Free';
+  const plan = sanitizeTerminalText(tierName || agyData?.plan_tier || 'Free', 80);
   const tasks = agyData?.task_count || 0;
 
   // Extract model information
   const rawModelName = agyData?.model?.display_name || agyData?.model?.id || 'Unknown Model';
-  const modelName = simplifyModelName(rawModelName);
+  const modelName = sanitizeTerminalText(simplifyModelName(rawModelName), 80);
 
   const formatTokens = (n) => {
     if (n >= 1000000) {
@@ -298,6 +311,14 @@ function renderHUD(state, agyData, config, quotaData, tierName) {
     `${magenta}${plan}${reset}`,
   ];
   if (showGitBranch) line1Parts.unshift(branchName);
+  const currentDir = sanitizeTerminalText(state.currentDir || '', 80);
+  if (showCurrentDir && currentDir) {
+    line1Parts.unshift(`${blue}${currentDir}${reset}`);
+  }
+  const username = sanitizeTerminalText(display.username || state.username || '', 80);
+  if (showUsername && username) {
+    line1Parts.unshift(`${cyan}${username}${reset}`);
+  }
   const line1 = line1Parts.join(divider);
 
   const firstNumber = (...values) => values.find(value => Number.isFinite(value));
@@ -310,20 +331,30 @@ function renderHUD(state, agyData, config, quotaData, tierName) {
     transcriptCurrentUsage.cache_read_input_tokens,
     transcriptUsage.cache_read_input_tokens
   ) ?? 0;
+  const cacheWrite = firstNumber(
+    agyCurrentUsage.cache_creation_input_tokens,
+    usage.cache_creation_input_tokens,
+    transcriptCurrentUsage.cache_creation_input_tokens,
+    transcriptUsage.cache_creation_input_tokens
+  ) ?? 0;
+  const cacheTotal = cacheRead + cacheWrite;
+
   let inTokens = firstNumber(
     agyCurrentUsage.input_tokens,
     transcriptCurrentUsage.input_tokens
   );
   if (inTokens === undefined) {
-    inTokens = Math.max(0, totalInput - cacheRead);
+    inTokens = Math.max(0, totalInput - cacheTotal);
+  } else if (modelIncludesCacheInInput(rawModelName)) {
+    inTokens = Math.max(0, inTokens - cacheTotal);
   }
   const outTokens = totalOutput;
-  const tokenTotal = inTokens + outTokens + cacheRead;
+  const tokenTotal = inTokens + outTokens + cacheTotal;
 
   // Compact token format: Tokens 150k (in: 127k, out: 23k, cache: Xk)
   const detailParts = [`in: ${formatTokens(inTokens)}`, `out: ${formatTokens(outTokens)}`];
-  if (cacheRead > 0) {
-    detailParts.push(`cache: ${formatTokens(cacheRead)}`);
+  if (cacheTotal > 0) {
+    detailParts.push(`cache: ${formatTokens(cacheTotal)}`);
   }
   const tokenParts = `${formatTokens(tokenTotal)} ${gray}(${reset}${detailParts.join(', ')}${gray})${reset}`;
   const tokenPrefix = tokenIcon === '[Tk] ' ? 'Tokens' : `${tokenIcon}Tokens`;
@@ -373,10 +404,10 @@ function renderHUD(state, agyData, config, quotaData, tierName) {
   if (showBreadcrumbs && breadcrumbCount > 0) {
     if (Array.isArray(state.breadcrumbs) && state.breadcrumbs.length > 0) {
       for (const item of state.breadcrumbs.filter(Boolean).slice(-breadcrumbCount)) {
-        metaParts.push(`${gray}${item}${reset}`);
+        metaParts.push(`${gray}${sanitizeTerminalText(item)}${reset}`);
       }
     } else if (state.memoryFile) {
-      metaParts.push(`${gray}1 ${state.memoryFile}${reset}`);
+      metaParts.push(`${gray}1 ${sanitizeTerminalText(state.memoryFile)}${reset}`);
     }
   }
   const rulesCount = state.rulesCount || 0;
@@ -392,7 +423,7 @@ function renderHUD(state, agyData, config, quotaData, tierName) {
     const pctColor = pct <= (1 - critThresh) * 100 ? red : pct <= (1 - warnThresh) * 100 ? yellow : green;
 
     // 1. Name
-    const rawName = simplifyModelName(q.displayName || q.id);
+    const rawName = sanitizeTerminalText(simplifyModelName(q.displayName || q.id), 120);
     const namePart = truncateAndPad(rawName, nameWidth);
     const coloredName = `${cyan}${namePart}${reset}`;
 
@@ -427,7 +458,7 @@ function renderHUD(state, agyData, config, quotaData, tierName) {
     const segments = [];
     for (const [provider, models] of groups) {
       const items = models.map(q => {
-        const name = compactModelName(q.displayName || q.id);
+        const name = sanitizeTerminalText(compactModelName(q.displayName || q.id), 20);
         const pct = Math.round(q.remainingFraction * 100);
         const filled = Math.round((pct / 100) * 3);
         const empty = 3 - filled;
@@ -462,7 +493,7 @@ function renderHUD(state, agyData, config, quotaData, tierName) {
     }
   } else if (quotaData && quotaData.unavailableReason) {
     const dividerLine = `  ${gray}${glyph.hbar.repeat(columnWidth * 2 + 1)}${reset}`;
-    const reason = text.quotaReasons[quotaData.unavailableReason] || quotaData.unavailableReason;
+    const reason = sanitizeTerminalText(text.quotaReasons[quotaData.unavailableReason] || quotaData.unavailableReason);
     quotaLines = `\n${dividerLine}\n  ${yellow}${text.quotaUnavailable}:${reset} ${gray}${reason}${reset}\n${dividerLine}`;
   } else if (quotaData && quotaData.length === 0) {
     const dividerLine = `  ${gray}${glyph.hbar.repeat(columnWidth * 2 + 1)}${reset}`;
