@@ -12,10 +12,10 @@ const __dirname = path.dirname(__filename);
 const projectRoot = path.resolve(__dirname, '..', '..');
 
 test('getSessionState should initialize state properly even for missing files', async () => {
-  // We can't easily mock the read stream without a real file or stub, 
-  // so we'll test the basic parsing logic by passing a small string if we had exposed it.
-  // For now, let's just assert that it is a function.
   assert.strictEqual(typeof getSessionState, 'function');
+  const state = await getSessionState('missing-transcript-nonexistent.jsonl');
+  const path = await import('path');
+  assert.strictEqual(state.currentDir, path.basename(process.cwd()));
 });
 
 test('getSessionState reads the highest transcript step index', async () => {

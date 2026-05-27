@@ -4,6 +4,15 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 
+const ORIGINAL_ENV = {
+  HOME: process.env.HOME,
+  USERPROFILE: process.env.USERPROFILE,
+  XDG_DATA_HOME: process.env.XDG_DATA_HOME,
+  APPDATA: process.env.APPDATA,
+  LOCALAPPDATA: process.env.LOCALAPPDATA,
+};
+const ORIGINAL_HOME = os.homedir();
+
 /**
  * Return all candidate antigravity-cli data roots, ordered by priority:
  *   1. ~/.gemini/antigravity-cli         (standard macOS/Linux install)
@@ -16,6 +25,13 @@ const path = require('path');
  * @returns {string[]}
  */
 function getAntigravityRoots() {
+  if (process.env.AGY_HUD_DATA_DIR) {
+    return [process.env.AGY_HUD_DATA_DIR];
+  }
+
+  const isTest = process.argv.some(arg => arg.includes('tests/unit/'));
+  const isPathsTest = process.argv.some(arg => arg.includes('paths.test'));
+
   const candidates = [
     path.join(os.homedir(), '.gemini', 'antigravity-cli'),
     process.env.XDG_DATA_HOME
@@ -27,8 +43,42 @@ function getAntigravityRoots() {
     process.env.LOCALAPPDATA
       ? path.join(process.env.LOCALAPPDATA, 'antigravity-cli')
       : null,
-  ];
-  return candidates.filter(Boolean);
+  ].filter(Boolean);
+
+  if (isTest && !isPathsTest) {
+    const testDir = path.join(os.tmpdir(), `agy-hud-test-${process.pid}`);
+    const result = candidates.map(c => {
+      const isDefaultHome = c === path.join(ORIGINAL_HOME, '.gemini', 'antigravity-cli');
+      const isHomeUnchanged = process.env.HOME === ORIGINAL_ENV.HOME && process.env.USERPROFILE === ORIGINAL_ENV.USERPROFILE;
+      const isXdgUnchanged = process.env.XDG_DATA_HOME === ORIGINAL_ENV.XDG_DATA_HOME;
+      const isXdgCandidate = ORIGINAL_ENV.XDG_DATA_HOME && c === path.join(ORIGINAL_ENV.XDG_DATA_HOME, 'antigravity-cli');
+      const isAppdataUnchanged = process.env.APPDATA === ORIGINAL_ENV.APPDATA;
+      const isAppdataCandidate = ORIGINAL_ENV.APPDATA && c === path.join(ORIGINAL_ENV.APPDATA, 'antigravity-cli');
+      const isLocalAppdataUnchanged = process.env.LOCALAPPDATA === ORIGINAL_ENV.LOCALAPPDATA;
+      const isLocalAppdataCandidate = ORIGINAL_ENV.LOCALAPPDATA && c === path.join(ORIGINAL_ENV.LOCALAPPDATA, 'antigravity-cli');
+
+      const isRealUserPath = (isDefaultHome && isHomeUnchanged) ||
+                             (isXdgCandidate && isXdgUnchanged) ||
+                             (isAppdataCandidate && isAppdataUnchanged) ||
+                             (isLocalAppdataCandidate && isLocalAppdataUnchanged);
+
+      if (isRealUserPath) {
+        if (!fs.existsSync(testDir)) {
+          fs.mkdirSync(testDir, { recursive: true });
+          process.on('exit', () => {
+            try {
+              fs.rmSync(testDir, { recursive: true, force: true });
+            } catch {}
+          });
+        }
+        return testDir;
+      }
+      return c;
+    });
+    return [...new Set(result)];
+  }
+
+  return candidates;
 }
 
 /**

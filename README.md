@@ -206,6 +206,7 @@ Optional. Create `agy-hud.config.json` at the workspace root to override default
     "showTokenBar": true,
     "showBreadcrumbs": true,
     "showGitBranch": true,
+    "showCurrentDir": true,
     "breadcrumbCount": 3,
     "useNerdFonts": false,
     "columnWidth": 40
@@ -225,6 +226,7 @@ Optional. Create `agy-hud.config.json` at the workspace root to override default
   - `showTokenBar`: Whether to display the token bar.
   - `showBreadcrumbs`: Whether to display workspace file breadcrumbs.
   - `showGitBranch`: Whether to display the current Git branch.
+  - `showCurrentDir`: Whether to display the base name of the current working directory.
   - `breadcrumbCount`: Number of files to show in breadcrumbs.
   - `useNerdFonts`: Set to `true` to use premium developer icons from [Nerd Fonts](https://www.nerdfonts.com/).
   - `columnWidth`: Max column width for the quota table layout (defaults to `40`).

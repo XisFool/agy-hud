@@ -9,6 +9,7 @@
     "showTokenBar": true,
     "showBreadcrumbs": true,
     "showGitBranch": true,
+    "showCurrentDir": true,
     "breadcrumbCount": 3,
     "useNerdFonts": false
   },

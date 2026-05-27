@@ -144,6 +144,14 @@ async function startWizard() {
       }
     },
     {
+      key: 'showCurrentDir',
+      label: 'Show Current Directory',
+      getValue: () => (config.display.showCurrentDir !== false ? 'Enabled' : 'Disabled'),
+      toggle: () => {
+        config.display.showCurrentDir = config.display.showCurrentDir !== false ? false : true;
+      }
+    },
+    {
       key: 'showTokens',
       label: 'Show Token Bar',
       getValue: () => (config.display.showTokenBar !== false ? 'Enabled' : 'Disabled'),

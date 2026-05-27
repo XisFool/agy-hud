@@ -166,7 +166,8 @@ async function getSessionState(transcriptPath) {
     }
   } catch {}
 
-  const state = { steps, branch, memoryFile, rulesCount, mcpCount, hooksCount };
+  const currentDir = path.basename(cwd);
+  const state = { steps, branch, memoryFile, rulesCount, mcpCount, hooksCount, currentDir };
   if (usage) state.usage = usage;
   return state;
 }

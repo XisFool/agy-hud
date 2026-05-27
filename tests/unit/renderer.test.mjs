@@ -394,6 +394,38 @@ test('renderHUD respects display visibility toggles', () => {
   assert.match(output, /1 hooks/);
 });
 
+test('renderHUD should correctly render current directory', () => {
+  const state = {
+    steps: 1,
+    branch: 'main',
+    currentDir: 'my-project-dir',
+  };
+  const agyData = {
+    context_window: { total_input_tokens: 0, total_output_tokens: 0, used_percentage: 0 }
+  };
+
+  // Test with showCurrentDir = true
+  const output1 = renderHUD(state, agyData, {
+    display: {
+      showCurrentDir: true,
+      showGitBranch: true,
+      unicode: false
+    }
+  });
+  assert.match(output1, /my-project-dir/);
+  assert.match(output1, /my-project-dir.*[|│].*\[B\] main/);
+
+  // Test with showCurrentDir = false
+  const output2 = renderHUD(state, agyData, {
+    display: {
+      showCurrentDir: false,
+      showGitBranch: true,
+      unicode: false
+    }
+  });
+  assert.doesNotMatch(output2, /my-project-dir/);
+});
+
 test('renderHUD limits breadcrumb metadata by breadcrumbCount', () => {
   const state = {
     steps: 1,
