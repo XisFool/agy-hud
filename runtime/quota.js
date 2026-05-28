@@ -35,7 +35,11 @@ function getTokenCandidates(roots = getAntigravityRoots()) {
 }
 
 const CACHE_PATH = resolveAntigravityPath('agy-hud-quota-cache.json');
-const CACHE_VERSION = 2;
+const CACHE_VERSION = 3;
+// Resets shorter than this come from the 5-hour bucket; longer ones from the
+// weekly bucket. 12 h is well-separated from both natural ranges
+// (5 h max for the short window, ~7 d for the weekly).
+const FIVE_HOUR_WINDOW_THRESHOLD_MS = 12 * 60 * 60 * 1000;
 const WINDOWS_TOKEN_TEMP_TTL_MS = 5 * 60 * 1000;
 const WINDOWS_TOKEN_EXPIRY_SKEW_MS = 60 * 1000;
 const WINDOWS_CREDENTIAL_REFRESH_DEBOUNCE_MS = 30 * 1000;
@@ -108,25 +112,92 @@ function normalizeRemainingFraction(value, hasResetTime = false) {
 }
 
 /**
+ * Classify a resetTime as belonging to the 5-hour or weekly quota window.
+ * The fetchAvailableModels API exposes only one window at a time, so we infer
+ * which one by how far away the reset is.
+ * @param {string|null} resetTime ISO-8601 string
+ * @param {number} now epoch ms
+ * @returns {'fiveHour' | 'weekly' | null}
+ */
+function classifyQuotaWindow(resetTime, now = Date.now()) {
+  if (!resetTime) return null;
+  const ms = new Date(resetTime).getTime() - now;
+  if (!Number.isFinite(ms)) return null;
+  return ms < FIVE_HOUR_WINDOW_THRESHOLD_MS ? 'fiveHour' : 'weekly';
+}
+
+/**
  * Normalize the fetchAvailableModels response to the HUD quota shape.
+ * Each model carries the `window` tag inferred from its resetTime so that
+ * downstream merging can keep both windows' last observed values in cache.
  * @param {Object<string, Object>} models
  * @returns {ModelQuota[]}
  */
-function normalizeQuotaModels(models, interestingModelIds = FALLBACK_AGENT_MODEL_IDS) {
+function normalizeQuotaModels(models, interestingModelIds = FALLBACK_AGENT_MODEL_IDS, now = Date.now()) {
   const results = [];
   for (const id of interestingModelIds) {
     const m = models[id];
     if (!m || !m.quotaInfo) continue;
     const qi = m.quotaInfo;
+    const resetTime = qi.resetTime || null;
+    const remainingFraction = normalizeRemainingFraction(qi.remainingFraction, !!resetTime);
+    const window = classifyQuotaWindow(resetTime, now);
+    const observation = resetTime
+      ? { remainingFraction, resetTime, observedAt: now }
+      : null;
     results.push({
       id,
       displayName: m.displayName || id,
       modelProvider: m.modelProvider || null,
-      remainingFraction: normalizeRemainingFraction(qi.remainingFraction, !!qi.resetTime),
-      resetTime: qi.resetTime || null,
+      remainingFraction,
+      resetTime,
+      window,
+      windows: observation && window
+        ? { [window]: observation }
+        : {},
     });
   }
   return results;
+}
+
+/**
+ * Merge a freshly observed quota response with the previously cached one,
+ * preserving the *other* window's last observation. The cloud API only
+ * exposes one window per response, so without merging the never-observed
+ * window would never appear in the UI.
+ * @param {ModelQuota[]} fresh
+ * @param {ModelQuota[]} previous
+ * @returns {ModelQuota[]}
+ */
+function mergeQuotaWindows(fresh, previous) {
+  const prevById = new Map();
+  for (const q of previous || []) {
+    if (q && q.id) prevById.set(q.id, q);
+  }
+  return (fresh || []).map(q => {
+    const prev = prevById.get(q.id);
+    const merged = { ...(prev?.windows || {}), ...(q.windows || {}) };
+    return { ...q, windows: merged };
+  });
+}
+
+/**
+ * Pick the binding window (lower remaining fraction) for surface display.
+ * Falls back to whichever single window we have, or null if none.
+ * @param {ModelQuota['windows']} windows
+ */
+function pickCriticalWindow(windows) {
+  if (!windows) return null;
+  const five = windows.fiveHour;
+  const week = windows.weekly;
+  if (five && week) {
+    return five.remainingFraction <= week.remainingFraction
+      ? { ...five, window: 'fiveHour' }
+      : { ...week, window: 'weekly' };
+  }
+  if (five) return { ...five, window: 'fiveHour' };
+  if (week) return { ...week, window: 'weekly' };
+  return null;
 }
 
 function createUnavailableQuotaResult(reason) {
@@ -572,16 +643,41 @@ function readCache(tokenOrAccessToken) {
 }
 
 /**
+ * Read the previous cache payload (any token) for merging the other window's
+ * last observation. Tier and per-window state are account-level, so we
+ * intentionally skip the token-match check used by readCache.
+ * @returns {Object | null}
+ */
+function readCacheRaw() {
+  try {
+    const raw = JSON.parse(fs.readFileSync(CACHE_PATH, 'utf8'));
+    if (!raw || !Array.isArray(raw.data)) return null;
+    return raw;
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Write quota cache. Expires at the earliest resetTime among all buckets.
  * Uses atomic write (tmp + rename) to prevent concurrent readers from seeing
  * truncated/empty content — the main fix for statusline quota flicker.
+ * Merges with the previous payload so the window not present in this response
+ * (e.g. 5-hour when the API returns weekly) keeps its last observation, but
+ * only when the cache belongs to the same credential identity (token rotation
+ * is fine, account switch is not).
  * @param {ModelQuota[]} data
  * @param {string|Object} tokenOrAccessToken
  */
 function writeCache(data, tokenOrAccessToken, tier = null) {
+  const previousRaw = readCacheRaw();
+  const sameIdentity = previousRaw && doesCachePayloadMatchToken(previousRaw, tokenOrAccessToken);
+  const previousData = sameIdentity ? previousRaw.data : [];
+  const merged = mergeQuotaWindows(data, previousData);
+
   // Find earliest resetTime
   let earliest = Infinity;
-  for (const m of data) {
+  for (const m of merged) {
     if (m.resetTime) {
       const t = new Date(m.resetTime).getTime();
       if (t < earliest) earliest = t;
@@ -603,7 +699,7 @@ function writeCache(data, tokenOrAccessToken, tier = null) {
     cacheKeyHash,
     tokenHash,
     tier: tier || null,
-    data,
+    data: merged,
   };
   try {
     const tmpPath = `${CACHE_PATH}.tmp.${process.pid}`;
@@ -816,6 +912,9 @@ module.exports = {
   fetchTierFromCloud,
   extractTierName,
   normalizeQuotaModels,
+  classifyQuotaWindow,
+  mergeQuotaWindows,
+  pickCriticalWindow,
   discoverAgentModelIds,
   resolveDeprecatedIds,
   isCachePayloadFresh,
@@ -833,4 +932,5 @@ module.exports = {
   readCacheFallback,
   anyTokenFileExists,
   CACHE_PATH,
+  FIVE_HOUR_WINDOW_THRESHOLD_MS,
 };
