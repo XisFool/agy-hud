@@ -17,6 +17,9 @@ const {
   fetchTierFromCloud,
   extractTierName,
   normalizeQuotaModels,
+  classifyQuotaWindow,
+  mergeQuotaWindows,
+  pickCriticalWindow,
   discoverAgentModelIds,
   resolveDeprecatedIds,
   isCachePayloadFresh,
@@ -302,6 +305,7 @@ test('readToken can read Windows Credential Manager when the fast path is not re
 test('getQuota fast path returns cached quota without background refresh', async () => {
   const previousCache = fs.existsSync(CACHE_PATH) ? fs.readFileSync(CACHE_PATH, 'utf8') : null;
   try {
+    fs.rmSync(CACHE_PATH, { force: true });
     const cachedQuota = [{
       id: 'gemini-3-flash-agent',
       displayName: 'Gemini 3.5 Flash (High)',
@@ -317,7 +321,7 @@ test('getQuota fast path returns cached quota without background refresh', async
       backgroundRefresh: () => { refreshes += 1; },
     });
 
-    assert.deepEqual(quota, cachedQuota);
+    assert.deepEqual(quota, [{ ...cachedQuota[0], windows: {} }]);
     assert.equal(refreshes, 0);
   } finally {
     if (previousCache === null) fs.rmSync(CACHE_PATH, { force: true });
@@ -328,6 +332,7 @@ test('getQuota fast path returns cached quota without background refresh', async
 test('getQuota fast path preserves fresh cache when the access token rotates', async () => {
   const previousCache = fs.existsSync(CACHE_PATH) ? fs.readFileSync(CACHE_PATH, 'utf8') : null;
   try {
+    fs.rmSync(CACHE_PATH, { force: true });
     const tokenSourcePath = path.join('same-user', 'antigravity-oauth-token');
     const cachedQuota = [{
       id: 'gemini-3-flash-agent',
@@ -350,7 +355,7 @@ test('getQuota fast path preserves fresh cache when the access token rotates', a
       backgroundRefresh: () => { refreshes += 1; },
     });
 
-    assert.deepEqual(quota, cachedQuota);
+    assert.deepEqual(quota, [{ ...cachedQuota[0], windows: {} }]);
     assert.equal(refreshes, 1);
   } finally {
     if (previousCache === null) fs.rmSync(CACHE_PATH, { force: true });
@@ -518,6 +523,10 @@ test('readCache / writeCache reuses stable token source across access token refr
   const { readCache, writeCache } = quotaModule;
   const previousCache = fs.existsSync(CACHE_PATH) ? fs.readFileSync(CACHE_PATH, 'utf8') : null;
   try {
+    // Wipe any prior cache so mergeQuotaWindows doesn't inject stale windows
+    // from a sibling test that primed the cache earlier in this run.
+    fs.rmSync(CACHE_PATH, { force: true });
+
     const mockData = [{ id: 'gemini-3.5-flash-low', displayName: 'Gemini 3.5 Flash (Medium)', remainingFraction: 0.5, resetTime: null }];
 
     writeCache(mockData, {
@@ -529,7 +538,7 @@ test('readCache / writeCache reuses stable token source across access token refr
       accessToken: 'access-token-B',
       sourcePath: path.join('stable', 'antigravity-oauth-token'),
     });
-    assert.deepEqual(cachedA, mockData);
+    assert.deepEqual(cachedA, [{ ...mockData[0], windows: {} }]);
 
     const cachedB = readCache({
       accessToken: 'access-token-B',
@@ -667,13 +676,13 @@ function withCacheFile(content, fn) {
 }
 
 test('getCachedTier returns tier string from cache file', () => {
-  withCacheFile(JSON.stringify({ tier: 'Google AI Pro', data: [], version: 2 }), () => {
+  withCacheFile(JSON.stringify({ tier: 'Google AI Pro', data: [], version: 3 }), () => {
     assert.equal(getCachedTier(), 'Google AI Pro');
   });
 });
 
 test('getCachedTier returns null when cache has no tier field', () => {
-  withCacheFile(JSON.stringify({ data: [], version: 2 }), () => {
+  withCacheFile(JSON.stringify({ data: [], version: 3 }), () => {
     assert.equal(getCachedTier(), null);
   });
 });
@@ -793,6 +802,275 @@ test('resolveDeprecatedIds is a no-op when no deprecations exist', () => {
   assert.deepEqual(resolveDeprecatedIds(ids, { deprecatedModelIds: {} }), ids);
 });
 
+// --- 5-hour vs weekly quota window classification + merging ---
+
+test('classifyQuotaWindow tags short resets as fiveHour and long resets as weekly', () => {
+  const now = Date.parse('2026-05-20T20:00:00Z');
+  const fiveHourReset = new Date(now + 4 * 60 * 60 * 1000).toISOString();
+  const weeklyReset = new Date(now + 5 * 24 * 60 * 60 * 1000).toISOString();
+  const edgeReset = new Date(now + 12 * 60 * 60 * 1000).toISOString();
+
+  assert.equal(classifyQuotaWindow(fiveHourReset, now), 'fiveHour');
+  assert.equal(classifyQuotaWindow(weeklyReset, now), 'weekly');
+  // 12h boundary is inclusive on the weekly side.
+  assert.equal(classifyQuotaWindow(edgeReset, now), 'weekly');
+  assert.equal(classifyQuotaWindow(null, now), null);
+  assert.equal(classifyQuotaWindow('not-a-date', now), null);
+});
+
+test('normalizeQuotaModels tags each model with its observed window', () => {
+  const now = Date.parse('2026-05-20T20:00:00Z');
+  const fiveHourReset = new Date(now + 4 * 60 * 60 * 1000).toISOString();
+  const weeklyReset = new Date(now + 5 * 24 * 60 * 60 * 1000).toISOString();
+
+  const quotas = normalizeQuotaModels(
+    {
+      'short-bucket': {
+        displayName: 'Short',
+        quotaInfo: { remainingFraction: 0.8, resetTime: fiveHourReset },
+      },
+      'long-bucket': {
+        displayName: 'Long',
+        quotaInfo: { remainingFraction: 0.2, resetTime: weeklyReset },
+      },
+      'unlimited': {
+        displayName: 'Unlimited',
+        quotaInfo: { remainingFraction: 1 },
+      },
+    },
+    ['short-bucket', 'long-bucket', 'unlimited'],
+    now
+  );
+
+  assert.equal(quotas[0].window, 'fiveHour');
+  assert.deepEqual(quotas[0].windows, {
+    fiveHour: { remainingFraction: 0.8, resetTime: fiveHourReset, observedAt: now },
+  });
+
+  assert.equal(quotas[1].window, 'weekly');
+  assert.deepEqual(quotas[1].windows, {
+    weekly: { remainingFraction: 0.2, resetTime: weeklyReset, observedAt: now },
+  });
+
+  assert.equal(quotas[2].window, null);
+  assert.deepEqual(quotas[2].windows, {});
+});
+
+test('mergeQuotaWindows keeps the previously observed window when the response only covers the other one', () => {
+  const now = Date.parse('2026-05-20T20:00:00Z');
+  const earlier = now - 30 * 60 * 1000;
+  const previousFiveHour = {
+    remainingFraction: 0.6,
+    resetTime: new Date(earlier + 4 * 60 * 60 * 1000).toISOString(),
+    observedAt: earlier,
+  };
+  const previous = [{
+    id: 'gemini-3-flash-agent',
+    displayName: 'Gemini 3.5 Flash (High)',
+    remainingFraction: previousFiveHour.remainingFraction,
+    resetTime: previousFiveHour.resetTime,
+    window: 'fiveHour',
+    windows: { fiveHour: previousFiveHour },
+  }];
+
+  const weeklyResetTime = new Date(now + 5 * 24 * 60 * 60 * 1000).toISOString();
+  const fresh = [{
+    id: 'gemini-3-flash-agent',
+    displayName: 'Gemini 3.5 Flash (High)',
+    remainingFraction: 0.2,
+    resetTime: weeklyResetTime,
+    window: 'weekly',
+    windows: { weekly: { remainingFraction: 0.2, resetTime: weeklyResetTime, observedAt: now } },
+  }];
+
+  const merged = mergeQuotaWindows(fresh, previous, now);
+  assert.equal(merged.length, 1);
+  assert.deepEqual(merged[0].windows, {
+    fiveHour: previousFiveHour,
+    weekly: { remainingFraction: 0.2, resetTime: weeklyResetTime, observedAt: now },
+  });
+  // Top-level remainingFraction/resetTime still reflect the latest response.
+  assert.equal(merged[0].remainingFraction, 0.2);
+  assert.equal(merged[0].resetTime, weeklyResetTime);
+});
+
+test('mergeQuotaWindows drops expired window observations from the previous cache', () => {
+  const now = Date.parse('2026-05-20T20:00:00Z');
+  const expiredFiveHour = {
+    remainingFraction: 0.05,
+    resetTime: new Date(now - 60 * 60 * 1000).toISOString(), // 1h in the past
+    observedAt: now - 5 * 60 * 60 * 1000,
+  };
+  const freshWeeklyReset = new Date(now + 5 * 24 * 60 * 60 * 1000).toISOString();
+  const previous = [{
+    id: 'gemini-3-flash-agent',
+    windows: { fiveHour: expiredFiveHour },
+  }];
+  const fresh = [{
+    id: 'gemini-3-flash-agent',
+    remainingFraction: 0.8,
+    resetTime: freshWeeklyReset,
+    windows: { weekly: { remainingFraction: 0.8, resetTime: freshWeeklyReset, observedAt: now } },
+  }];
+
+  const merged = mergeQuotaWindows(fresh, previous, now);
+  // Expired fiveHour observation must NOT survive — would otherwise dominate
+  // pickCriticalWindow with a stale 5% reading forever.
+  assert.equal(merged[0].windows.fiveHour, undefined);
+  assert.equal(merged[0].windows.weekly.remainingFraction, 0.8);
+});
+
+test('mergeQuotaWindows carries forward models present in previous but missing from fresh', () => {
+  const now = Date.parse('2026-05-20T20:00:00Z');
+  const futureReset = new Date(now + 4 * 60 * 60 * 1000).toISOString();
+  const liveObservation = { remainingFraction: 0.5, resetTime: futureReset, observedAt: now };
+  const previous = [
+    { id: 'kept-model', remainingFraction: 0.5, resetTime: futureReset, windows: { fiveHour: liveObservation } },
+    { id: 'fully-expired', windows: { fiveHour: { remainingFraction: 0.1, resetTime: new Date(now - 1000).toISOString(), observedAt: now - 10_000 } } },
+  ];
+  const fresh = []; // API temporarily returned nothing for our interesting models
+
+  const merged = mergeQuotaWindows(fresh, previous, now);
+  // The model with at least one non-expired observation must survive.
+  const kept = merged.find(m => m.id === 'kept-model');
+  assert.ok(kept, 'kept-model with a live observation should be preserved');
+  assert.deepEqual(kept.windows.fiveHour, liveObservation);
+  // The fully-expired model is dropped (nothing useful remains to display).
+  assert.equal(merged.find(m => m.id === 'fully-expired'), undefined);
+});
+
+test('pickCriticalWindow skips expired observations even when they have the lower remainingFraction', () => {
+  const now = Date.parse('2026-05-20T20:00:00Z');
+  const expired = { remainingFraction: 0.05, resetTime: new Date(now - 1000).toISOString(), observedAt: now - 10_000 };
+  const live = { remainingFraction: 0.8, resetTime: new Date(now + 5 * 24 * 60 * 60 * 1000).toISOString(), observedAt: now };
+
+  const picked = pickCriticalWindow({ fiveHour: expired, weekly: live }, now);
+  assert.equal(picked.window, 'weekly');
+  assert.equal(picked.remainingFraction, 0.8);
+
+  // Both expired → null so callers can fall back gracefully.
+  assert.equal(pickCriticalWindow({ fiveHour: expired, weekly: expired }, now), null);
+});
+
+test('classifyQuotaWindow returns null for resetTimes in the past', () => {
+  const now = Date.parse('2026-05-20T20:00:00Z');
+  assert.equal(classifyQuotaWindow(new Date(now - 1000).toISOString(), now), null);
+  assert.equal(classifyQuotaWindow(new Date(now).toISOString(), now), null); // exactly now: already-elapsed
+  assert.equal(classifyQuotaWindow(new Date(now + 1000).toISOString(), now), 'fiveHour');
+});
+
+test('pickCriticalWindow returns the lower-remaining window', () => {
+  const fiveHour = { remainingFraction: 0.6, resetTime: 'x', observedAt: 1 };
+  const weekly = { remainingFraction: 0.2, resetTime: 'y', observedAt: 2 };
+  assert.equal(pickCriticalWindow({ fiveHour, weekly }).window, 'weekly');
+  assert.equal(pickCriticalWindow({ fiveHour: weekly, weekly: fiveHour }).window, 'fiveHour');
+  assert.equal(pickCriticalWindow({ fiveHour }).window, 'fiveHour');
+  assert.equal(pickCriticalWindow({ weekly }).window, 'weekly');
+  assert.equal(pickCriticalWindow({}), null);
+  assert.equal(pickCriticalWindow(null), null);
+});
+
+test('writeCache merges fresh response with previously cached other-window observations', () => {
+  const { writeCache, readCachePayload } = quotaModule;
+  const previousCache = fs.existsSync(CACHE_PATH) ? fs.readFileSync(CACHE_PATH, 'utf8') : null;
+  try {
+    fs.rmSync(CACHE_PATH, { force: true });
+
+    const fiveHourReset = new Date(Date.now() + 4 * 60 * 60 * 1000).toISOString();
+    const fiveHourObservation = {
+      remainingFraction: 0.6,
+      resetTime: fiveHourReset,
+      observedAt: Date.now() - 30 * 60 * 1000,
+    };
+    writeCache([
+      {
+        id: 'gemini-3-flash-agent',
+        displayName: 'Gemini 3.5 Flash (High)',
+        remainingFraction: 0.6,
+        resetTime: fiveHourReset,
+        window: 'fiveHour',
+        windows: { fiveHour: fiveHourObservation },
+      },
+    ], 'token');
+
+    const weeklyReset = new Date(Date.now() + 5 * 24 * 60 * 60 * 1000).toISOString();
+    writeCache([
+      {
+        id: 'gemini-3-flash-agent',
+        displayName: 'Gemini 3.5 Flash (High)',
+        remainingFraction: 0.2,
+        resetTime: weeklyReset,
+        window: 'weekly',
+        windows: { weekly: { remainingFraction: 0.2, resetTime: weeklyReset, observedAt: Date.now() } },
+      },
+    ], 'token');
+
+    const payload = readCachePayload('token');
+    assert.equal(payload.data.length, 1);
+    const windows = payload.data[0].windows;
+    assert.deepEqual(windows.fiveHour, fiveHourObservation);
+    assert.equal(windows.weekly.remainingFraction, 0.2);
+    assert.equal(windows.weekly.resetTime, weeklyReset);
+  } finally {
+    if (previousCache === null) fs.rmSync(CACHE_PATH, { force: true });
+    else fs.writeFileSync(CACHE_PATH, previousCache);
+  }
+});
+
+test('writeCache preserves previously cached tier when fresh tier is null and identity matches', () => {
+  const { writeCache, getCachedTier } = quotaModule;
+  const previousCache = fs.existsSync(CACHE_PATH) ? fs.readFileSync(CACHE_PATH, 'utf8') : null;
+  try {
+    fs.rmSync(CACHE_PATH, { force: true });
+    const futureReset = new Date(Date.now() + 60 * 60 * 1000).toISOString();
+    const data = [{ id: 'm', remainingFraction: 0.5, resetTime: futureReset, windows: {} }];
+
+    writeCache(data, 'tok', 'Google AI Pro');
+    assert.equal(getCachedTier(), 'Google AI Pro');
+
+    // Simulate fetchTierFromCloud transient failure (returns null) while quota
+    // fetch succeeds. The cached tier must survive.
+    writeCache(data, 'tok', null);
+    assert.equal(getCachedTier(), 'Google AI Pro');
+  } finally {
+    if (previousCache === null) fs.rmSync(CACHE_PATH, { force: true });
+    else fs.writeFileSync(CACHE_PATH, previousCache);
+  }
+});
+
+test('writeCache expiresAt accounts for the soonest resetTime across merged windows', () => {
+  const { writeCache, readCachePayload } = quotaModule;
+  const previousCache = fs.existsSync(CACHE_PATH) ? fs.readFileSync(CACHE_PATH, 'utf8') : null;
+  try {
+    fs.rmSync(CACHE_PATH, { force: true });
+    const fiveHourReset = new Date(Date.now() + 10 * 60 * 1000).toISOString(); // ~10min
+    const weeklyReset = new Date(Date.now() + 5 * 24 * 60 * 60 * 1000).toISOString(); // 5d
+
+    // Step 1: prime cache with a 5-hour observation that resets in 10 minutes.
+    writeCache([{
+      id: 'm', remainingFraction: 0.6, resetTime: fiveHourReset,
+      windows: { fiveHour: { remainingFraction: 0.6, resetTime: fiveHourReset, observedAt: Date.now() } },
+    }], 'tok');
+
+    // Step 2: fresh response carries a weekly window only (resetTime 5 days out).
+    writeCache([{
+      id: 'm', remainingFraction: 0.2, resetTime: weeklyReset,
+      windows: { weekly: { remainingFraction: 0.2, resetTime: weeklyReset, observedAt: Date.now() } },
+    }], 'tok');
+
+    const raw = readCachePayload('tok');
+    // expiresAt must be capped to the 10-minute fiveHour reset, NOT the
+    // 5-day weekly top-level — otherwise we'd serve a stale fiveHour past
+    // its real reset time. Allow 2-min cap to fire below 10min anyway.
+    const tenMinutesFromNow = Date.now() + 10 * 60 * 1000 + 5000;
+    assert.ok(raw.expiresAt <= tenMinutesFromNow,
+      `expiresAt ${new Date(raw.expiresAt).toISOString()} must be <= 10min from now, not the 5-day weekly reset`);
+  } finally {
+    if (previousCache === null) fs.rmSync(CACHE_PATH, { force: true });
+    else fs.writeFileSync(CACHE_PATH, previousCache);
+  }
+});
+
 // --- Fix: token-null fallback to fresh cache (with file-existence check) ---
 
 test('getQuota returns fresh cache when token file exists but is temporarily unreadable', async () => {
@@ -819,7 +1097,7 @@ test('getQuota returns fresh cache when token file exists but is temporarily unr
       roots: [tokenDir],
     });
 
-    assert.deepEqual(quota, cachedQuota);
+    assert.deepEqual(quota, [{ ...cachedQuota[0], windows: {} }]);
   } finally {
     if (previousCache === null) fs.rmSync(CACHE_PATH, { force: true });
     else fs.writeFileSync(CACHE_PATH, previousCache);
@@ -836,7 +1114,7 @@ test('getQuota reports not_logged_in when genuinely logged out despite fresh cac
     fs.mkdirSync(emptyDir, { recursive: true });
 
     const freshPayload = {
-      version: 2,
+      version: 3,
       expiresAt: Date.now() + 60_000,
       lastRefreshed: Date.now(),
       cacheKeyHash: 'abc',
@@ -870,7 +1148,7 @@ test('getQuota reports not_logged_in when token is null and cache is expired', a
     fs.writeFileSync(path.join(tokenDir, 'antigravity-oauth-token'), '{corrupt');
 
     const expiredPayload = {
-      version: 2,
+      version: 3,
       expiresAt: Date.now() - 1000,
       lastRefreshed: Date.now() - 600_000,
       cacheKeyHash: 'abc',
@@ -901,7 +1179,7 @@ test('getQuota debounces background refresh using cache lastRefreshed even witho
   const previousCache = fs.existsSync(CACHE_PATH) ? fs.readFileSync(CACHE_PATH, 'utf8') : null;
   try {
     const recentPayload = {
-      version: 2,
+      version: 3,
       expiresAt: Date.now() - 1000,
       lastRefreshed: Date.now() - 5000,
       cacheKeyHash: 'different-user',
@@ -931,7 +1209,7 @@ test('readCacheLastRefreshed returns timestamp from cache regardless of token', 
   const previousCache = fs.existsSync(CACHE_PATH) ? fs.readFileSync(CACHE_PATH, 'utf8') : null;
   try {
     const ts = Date.now() - 10000;
-    fs.writeFileSync(CACHE_PATH, JSON.stringify({ version: 2, lastRefreshed: ts, data: [] }), { mode: 0o600 });
+    fs.writeFileSync(CACHE_PATH, JSON.stringify({ version: 3, lastRefreshed: ts, data: [] }), { mode: 0o600 });
     assert.equal(readCacheLastRefreshed(), ts);
 
     fs.rmSync(CACHE_PATH, { force: true });
@@ -947,7 +1225,7 @@ test('readCacheFallback returns payload without token matching', () => {
   const previousCache = fs.existsSync(CACHE_PATH) ? fs.readFileSync(CACHE_PATH, 'utf8') : null;
   try {
     const payload = {
-      version: 2,
+      version: 3,
       expiresAt: Date.now() + 60000,
       lastRefreshed: Date.now(),
       cacheKeyHash: 'any',
@@ -973,7 +1251,7 @@ test('getQuota falls back to readCacheFallback and returns data when token is un
   const previousCache = fs.existsSync(CACHE_PATH) ? fs.readFileSync(CACHE_PATH, 'utf8') : null;
   try {
     const payload = {
-      version: 2,
+      version: 3,
       expiresAt: Date.now() + 60000,
       lastRefreshed: Date.now() - 50000,
       cacheKeyHash: 'token-A-hash',
@@ -1001,7 +1279,7 @@ test('getQuota reports expired_token when token is expired, even if fallback cac
   const previousCache = fs.existsSync(CACHE_PATH) ? fs.readFileSync(CACHE_PATH, 'utf8') : null;
   try {
     const payload = {
-      version: 2,
+      version: 3,
       expiresAt: Date.now() + 60000,
       lastRefreshed: Date.now() - 50000,
       cacheKeyHash: 'token-A-hash',
