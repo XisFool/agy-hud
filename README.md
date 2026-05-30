@@ -42,7 +42,7 @@ Anthropic: Son███ Opus█░░ │ Google: Flash███ Pro███ �
 ```
 
 ### Layout breakdown
-- **Line 1** (identity): Git branch, current model, plan tier.
+- **Line 1** (identity): Resolved username/email (if enabled), Git branch, current model, plan tier.
 - **Line 2** (resources): Compact token breakdown (↑in ↓out ⟳cache — cache hidden when zero), context window bar with percentage, step/task counts. In Compact Mode, also shows current model quota.
 - **Line 3** (metadata): Project memory file, rules, MCPs, hooks — **only non-zero items shown**; entire line omitted when all are zero.
 - **Quota rows**: Account quota by model (matches `/usage` exactly) with reset countdowns. Durations ≥24h show days (e.g. `~6d4h`), ≥10h drop minutes (e.g. `~12h`).
@@ -185,7 +185,7 @@ This:
 1. Clears `settings.json` `statusLine` (with `.bak` of the original).
 2. Removes `~/.gemini/antigravity-cli/agy-hud-runtime/`.
 3. Removes the staged plugin (`agy plugin uninstall agy-hud`).
-4. Cleans tmp token mirror / quota cache files.
+4. Cleans payload, error log, tmp token mirror, and quota cache files across all roots and tmp directories.
 
 ---
 
