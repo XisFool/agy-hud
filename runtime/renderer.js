@@ -301,8 +301,14 @@ function renderHUD(state, agyData, config, quotaData, tierName, updateInfo) {
       const pctColor = pct <= (1 - critThresh) * 100 ? red : pct <= (1 - warnThresh) * 100 ? yellow : green;
       const bar = createProgressBar(pct, pctColor, 10, false);
       const imgIcon = unicode ? '🖼️ ' : '[IMG] ';
-      line2Parts.push(`${cyan}${imgIcon}Image Quota: ${bar} ${pctColor}${pct}%${reset}`);
+      let timeStr = '';
+      if (imgQ.resetTime) {
+        const secsLeft = Math.max(0, Math.round((new Date(imgQ.resetTime).getTime() - Date.now()) / 1000));
+        if (secsLeft > 0) timeStr = ` ${gray}~${formatDuration(secsLeft)}${reset}`;
+      }
+      line2Parts.push(`${cyan}${imgIcon}Image Quota: ${bar} ${pctColor}${pct}%${reset}${timeStr}`);
     }
+
   }
 
   const line2 = line2Parts.join(divider);
