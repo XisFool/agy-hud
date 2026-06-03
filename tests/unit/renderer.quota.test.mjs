@@ -307,5 +307,23 @@ describe('renderer / quota lines', () => {
       assert.match(output, /Image Quota Exhausted/);
       assert.match(output, /03h14m/);
     });
+    test('image model is NOT rendered as a table row (already shown inline on line 2)', () => {
+      const state = { steps: 5, branch: 'dev' };
+      const agyData = {
+        context_window: { total_input_tokens: 1000, total_output_tokens: 200, used_percentage: 5 }
+      };
+      const quotaData = [
+        { id: 'gemini-3.5-flash-low', displayName: 'Gemini 3.5 Flash (Low)', remainingFraction: 0.8, resetTime: new Date(Date.now() + 3600000).toISOString() },
+        { id: 'gemini-3.1-flash-image', displayName: 'Gemini 3.1 Flash Image', remainingFraction: 0.9 }
+      ];
+
+      const output = renderHUD(state, agyData, { display: { unicode: true, useNerdFonts: false, quotaStyle: 'table' } }, quotaData);
+      // Inline image quota on line 2 — present
+      assert.match(output, /Image Quota:/);
+      // Image model must NOT appear as a table column row
+      assert.doesNotMatch(output, /Gemini 3\.1 Flash I/);
+      // Non-image model still appears in table
+      assert.match(output, /Gemini 3\.5 Flash/);
+    });
   });
 });

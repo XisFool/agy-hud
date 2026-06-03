@@ -346,7 +346,10 @@ function renderHUD(state, agyData, config, quotaData, tierName, updateInfo) {
     if (isCompact) {
       quotaLines = `\n${renderCompactQuotaLine(quotaData, now)}`;
     } else {
-      const cols = quotaData.map(q => renderQuotaColumn(q, now));
+      const isImageModel = (q) => (q.id && q.id.includes('image')) || (q.displayName && q.displayName.toLowerCase().includes('image'));
+      const tableQuota = quotaData.filter(q => !isImageModel(q));
+      const cols = tableQuota.map(q => renderQuotaColumn(q, now));
+
       const rows = [];
       for (let i = 0; i < cols.length; i += 2) {
         const col1 = cols[i];
