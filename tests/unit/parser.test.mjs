@@ -357,3 +357,71 @@ test('getSessionState falls back to oauth_creds email when google_accounts.json 
   });
 });
 
+test('getSessionState parses image rate limit 429 errors from transcript', async () => {
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'agy-hud-parser-ratelimit-'));
+  try {
+    const transcriptPath = path.join(tempDir, 'transcript.jsonl');
+
+    // entry1: quotaResetDelay in structured error object
+    const entry1 = {
+      step_index: 1,
+      created_at: new Date(Date.now() - 5000).toISOString(),
+      content: 'RESOURCE_EXHAUSTED',
+      error: {
+        code: 429,
+        status: 'RESOURCE_EXHAUSTED',
+        details: [{ quotaResetDelay: '3h14m20s' }]
+      }
+    };
+
+    // entry2: quotaResetTimeStamp in structured error object (should win — further in future)
+    const future4h = new Date(Date.now() + 4 * 3600 * 1000).toISOString();
+    const entry2 = {
+      step_index: 2,
+      created_at: new Date(Date.now() - 1000).toISOString(),
+      content: 'RESOURCE_EXHAUSTED',
+      error: {
+        code: 429,
+        status: 'RESOURCE_EXHAUSTED',
+        details: [{ quotaResetTimeStamp: future4h }]
+      }
+    };
+
+    fs.writeFileSync(transcriptPath, [
+      JSON.stringify(entry1),
+      JSON.stringify(entry2),
+      ''
+    ].join('\n'));
+
+    const state = await getSessionState(transcriptPath);
+
+    assert.ok(state.imageExhausted);
+    assert.strictEqual(state.imageExhausted.exhausted, true);
+    // Should prefer the later timestamp (4h) over the earlier delay (3h14m)
+    const resetTime = new Date(state.imageExhausted.resetTime).getTime();
+    assert.ok(resetTime > Date.now() + 3.9 * 3600 * 1000);
+    assert.ok(resetTime < Date.now() + 4.1 * 3600 * 1000);
+  } finally {
+    fs.rmSync(tempDir, { recursive: true, force: true });
+  }
+});
+
+test('getSessionState does NOT false-positive on entries that only contain "429" as a number', async () => {
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'agy-hud-parser-no-fp-'));
+  try {
+    const transcriptPath = path.join(tempDir, 'transcript.jsonl');
+
+    // step_index happens to be 429, token count is 429 — must NOT set imageExhausted
+    const entry = {
+      step_index: 429,
+      context_window: { total_input_tokens: 429, total_output_tokens: 100, used_percentage: 1 }
+    };
+
+    fs.writeFileSync(transcriptPath, JSON.stringify(entry) + '\n');
+    const state = await getSessionState(transcriptPath);
+    assert.strictEqual(state.imageExhausted, undefined);
+  } finally {
+    fs.rmSync(tempDir, { recursive: true, force: true });
+  }
+});
+

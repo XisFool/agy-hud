@@ -247,10 +247,25 @@ agy-hud/
 ├── gemini-extension.json      # required by agy's remote-install validator
 ├── runtime/                   # downloaded by bootstrap to ~/.gemini/.../agy-hud-runtime/runtime/
 │   ├── bin/agy-hud.js         # statusLine entry (stdin JSON → ANSI HUD)
-│   ├── quota.js               # fetchAvailableModels client (matches /usage)
-│   ├── statusline-installer.js
-│   ├── uninstall.js
-│   └── ...
+│   ├── config-wizard.js       # configuration wizard (--config)
+│   ├── config.js              # config loader & writer
+│   ├── encoding.js            # console encoding & Unicode detector
+│   ├── parser.js              # scans workspace metadata & session transcript
+│   ├── paths.js               # cross-platform path resolution helpers
+│   ├── quota.js               # SWR quota orchestrator
+│   ├── quota/                 # quota & auth submodules (PR #62)
+│   │   ├── cache.js           # atomic JSON caching (v3 schema)
+│   │   ├── cloud.js           # API HTTP clients ( OIDC userinfo auth email)
+│   │   ├── models.js          # quota normalizer & window merging
+│   │   └── token.js           # cross-platform OAuth token discovery
+│   ├── renderer.js            # HUD layout orchestrator
+│   ├── renderer/              # ANSI rendering submodules (PR #58)
+│   │   ├── format.js          # colors, abbreviator, duration formatting
+│   │   ├── lang.js            # internationalization (zh/en auto-detection)
+│   │   └── quota-render.js    # column bars & single-row columns (PR #61)
+│   ├── statusline-installer.js# writes settings.json statusLine settings
+│   ├── uninstall.js           # cleans and purges runtime files
+│   └── update-checker.js      # checks for new GitHub releases
 ├── scripts/
 │   ├── install.sh             # one-command installer — macOS/Linux
 │   ├── install.ps1            # one-command installer — Windows PowerShell
@@ -259,7 +274,7 @@ agy-hud/
 │   ├── configure-utf8.ps1     # optional Windows UTF-8 profile + Git encoding helper
 │   ├── verify-display.js      # E2E: install + bootstrap + PTY-spawn agy + assert HUD
 │   └── diagnose-auth.js
-├── tests/unit/                # node --test
+├── tests/unit/                # modular unit tests (node --test)
 ├── .github/workflows/e2e.yml  # cross-platform CI matrix
 └── release.sh                 # npm test → E2E gate → zip → gh release
 ```

@@ -137,12 +137,50 @@ function findContextWindow(value, depth = 0) {
  * @param {string} transcriptPath
  * @returns {Promise<SessionState>}
  */
+function parseDurationToMs(durationStr) {
+  let ms = 0;
+  const segments = [...durationStr.matchAll(/(\d+)([hms])/g)];
+  if (segments.length > 0) {
+    for (const [, val, unit] of segments) {
+      const n = parseInt(val, 10);
+      if (unit === 'h') ms += n * 60 * 60 * 1000;
+      else if (unit === 'm') ms += n * 60 * 1000;
+      else if (unit === 's') ms += n * 1000;
+    }
+  } else {
+    const val = parseInt(durationStr, 10);
+    if (Number.isFinite(val)) {
+      ms = val * 1000;
+    }
+  }
+  return ms;
+}
+
+/**
+ * Recursively searches an object tree for a key, up to maxDepth levels deep.
+ * Safer than JSON.stringify + regex for extracting nested API error fields.
+ * @param {unknown} obj
+ * @param {string} key
+ * @param {number} [maxDepth=6]
+ * @returns {unknown}
+ */
+function deepFind(obj, key, maxDepth = 6) {
+  if (!obj || typeof obj !== 'object' || maxDepth === 0) return undefined;
+  if (Object.prototype.hasOwnProperty.call(obj, key)) return obj[key];
+  for (const v of Object.values(obj)) {
+    const found = deepFind(v, key, maxDepth - 1);
+    if (found !== undefined) return found;
+  }
+  return undefined;
+}
+
 async function getSessionState(transcriptPath) {
   let steps = 0;
   let branch = 'main';
   let gitPath = null;
   let usage;
   let maxHistoricalCache = 0;
+  let imageExhausted = null;
 
   try {
     const fileContent = fs.readFileSync(transcriptPath, 'utf8');
@@ -160,6 +198,52 @@ async function getSessionState(transcriptPath) {
                                (contextWindow.current_usage && contextWindow.current_usage.cache_read_input_tokens) || 0;
           if (cacheReadVal > maxHistoricalCache) {
             maxHistoricalCache = cacheReadVal;
+          }
+        }
+
+        // Parse image model 429 rate limits.
+        // Use deepFind on the already-parsed object instead of stringify+regex
+        // to avoid false positives (e.g. step_index or token counts containing "429").
+        const entryContent = typeof entry.content === 'string' ? entry.content : '';
+        const isRateLimit = (
+          deepFind(entry, 'RESOURCE_EXHAUSTED') !== undefined ||
+          deepFind(entry, 'quotaResetDelay') !== undefined ||
+          deepFind(entry, 'quotaResetTimeStamp') !== undefined ||
+          entryContent.includes('HTTP 429') ||
+          entryContent.includes('RESOURCE_EXHAUSTED')
+        );
+        if (isRateLimit) {
+          let delayMs = 0;
+          let timestampMs = 0;
+
+          const delayVal = deepFind(entry, 'quotaResetDelay') ?? deepFind(entry, 'retryDelay');
+          if (typeof delayVal === 'string' && delayVal) {
+            delayMs = parseDurationToMs(delayVal);
+          }
+
+          const tsVal = deepFind(entry, 'quotaResetTimeStamp');
+          if (typeof tsVal === 'string' && tsVal) {
+            const parsedTs = Date.parse(tsVal);
+            if (Number.isFinite(parsedTs)) {
+              timestampMs = parsedTs;
+            }
+          }
+
+          let resetTimeMs = 0;
+          if (timestampMs > 0) {
+            resetTimeMs = timestampMs;
+          } else if (delayMs > 0) {
+            const entryTime = entry.created_at ? new Date(entry.created_at).getTime() : Date.now();
+            resetTimeMs = entryTime + delayMs;
+          }
+
+          if (resetTimeMs > Date.now()) {
+            if (!imageExhausted || resetTimeMs > new Date(imageExhausted.resetTime).getTime()) {
+              imageExhausted = {
+                exhausted: true,
+                resetTime: new Date(resetTimeMs).toISOString()
+              };
+            }
           }
         }
       } catch {
@@ -277,6 +361,7 @@ async function getSessionState(transcriptPath) {
   const currentDir = path.basename(cwd);
   const state = { steps, branch, memoryFile, rulesCount, mcpCount, hooksCount, currentDir, username, maxHistoricalCache };
   if (usage) state.usage = usage;
+  if (imageExhausted) state.imageExhausted = imageExhausted;
   return state;
 }
 

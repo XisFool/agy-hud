@@ -243,14 +243,29 @@ powershell -ExecutionPolicy Bypass -Command "irm https://raw.githubusercontent.c
 
 ```
 agy-hud/
-├── plugin.json                # {"name":"agy-hud"} — agy plugin marker
+├── plugin.json                # {"name":"agy-hud"} — agy 插件标记文件
 ├── gemini-extension.json      # agy 远程安装验证器强制要求
 ├── runtime/                   # bootstrap 下载到 ~/.gemini/.../agy-hud-runtime/runtime/
 │   ├── bin/agy-hud.js         # statusLine 入口（stdin JSON → ANSI HUD）
-│   ├── quota.js               # fetchAvailableModels 客户端（与 /usage 对账）
-│   ├── statusline-installer.js
-│   ├── uninstall.js
-│   └── ...
+│   ├── config-wizard.js       # HUD 命令行配置向导（--config）
+│   ├── config.js              # 全局/局部配置文件加载器
+│   ├── encoding.js            # 控制台编码与 Unicode 检测器
+│   ├── parser.js              # 工作区元数据扫描与 transcript 日志解析
+│   ├── paths.js               # 跨平台路径解析工具集
+│   ├── quota.js               # SWR 额度获取主协调器
+│   ├── quota/                 # 额度与身份认证子模块 (PR #62)
+│   │   ├── cache.js           # 原子化 JSON 缓存读写（v3 schema）
+│   │   ├── cloud.js           # 额度与 OIDC 权威用户邮箱 HTTP 客户端
+│   │   ├── models.js          # API 配额标准化与多窗口观察合并
+│   │   └── token.js           # 跨平台 OAuth 访问令牌发现与 C# 读取
+│   ├── renderer.js            # HUD 界面排版主协调器
+│   ├── renderer/              # ANSI 终端渲染子模块 (PR #58)
+│   │   ├── format.js          # ANSI 配色、大数进位及重置时长格式化
+│   │   ├── lang.js            # 多语言（中文/英文）及本地化诊断支持
+│   │   └── quota-render.js    # 配额进度条与单行双列对齐排版 (PR #61)
+│   ├── statusline-installer.js# 向 settings.json 写入 statusLine 命令
+│   ├── uninstall.js           # 清理与卸载 HUD 运行时文件
+│   └── update-checker.js      # 检查新版本 Github Release 的微服务
 ├── scripts/
 │   ├── install.sh             # 一行安装入口 — macOS/Linux
 │   ├── install.ps1            # 一行安装入口 — Windows PowerShell
@@ -259,7 +274,7 @@ agy-hud/
 │   ├── configure-utf8.ps1     # 可选：Windows UTF-8 终端配置与 Git 编码助手
 │   ├── verify-display.js      # E2E：安装 + 引导 + 模拟起 PTY agy 并断言 HUD 存在
 │   └── diagnose-auth.js
-├── tests/unit/                # node --test 单元测试
+├── tests/unit/                # 模块化单元测试目录 (node --test)
 ├── .github/workflows/e2e.yml  # 跨平台 CI 自动化矩阵
 └── release.sh                 # npm test → E2E 检查 → 打包 zip → Github Release
 ```
