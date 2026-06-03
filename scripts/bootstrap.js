@@ -92,11 +92,30 @@ function requestBuffer(url, redirectsLeft = 5) {
   });
 }
 
+async function requestBufferWithRetry(url, maxAttempts = 3) {
+  let lastErr;
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      return await requestBuffer(url);
+    } catch (err) {
+      lastErr = err;
+      if (attempt < maxAttempts) {
+        const delaySec = Math.pow(2, attempt - 1); // 1s, 2s, 4s
+        process.stderr.write(`[agy-hud] download attempt ${attempt} failed (${err.message}), retrying in ${delaySec}s...\n`);
+        await new Promise(r => setTimeout(r, delaySec * 1000));
+      }
+    }
+  }
+  throw lastErr;
+}
+
+
 async function readRuntimeFile(relativePath, options) {
   if (options.sourceDir) {
     return fs.readFileSync(path.join(options.sourceDir, ...relativePath.split('/')));
   }
-  return requestBuffer(sourceUrl(options.sourceBase, relativePath));
+  return requestBufferWithRetry(sourceUrl(options.sourceBase, relativePath));
+
 }
 
 // Files staged by older agy-hud versions that the current spec-compliant
