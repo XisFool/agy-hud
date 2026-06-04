@@ -171,60 +171,25 @@ function renderHUD(state, agyData, config, quotaData, tierName, updateInfo) {
 
   const divider = ` ${gray}${glyph.vbar}${reset} `;
 
-  const quotaStyle = display.quotaStyle || 'table';
-  const isCompact = quotaStyle === 'compact';
-
-  // Find current model's quota for compact mode display
-  let currentModelQuota = null;
-  if (quotaData && quotaData.length > 0) {
-    const rawName = agyData?.model?.display_name || '';
-    const modelId = agyData?.model?.id || '';
-    currentModelQuota = quotaData.find(q =>
-      (modelId && q.id === modelId) ||
-      q.displayName === rawName ||
-      simplifyModelName(q.displayName) === modelName ||
-      modelNamesMatch(q.displayName, rawName)
-    );
-  }
-
   // Layer 1: identity + status
-  // Line 1 Left
-  const line1LeftParts = [];
-  const username = sanitizeTerminalText(display.username || state.username || '', 80);
-  if (showUsername && username) {
-    line1LeftParts.push(`${cyan}${username}${reset}`);
-  }
+  const line1Parts = [
+    `${green}${modelName}${reset}`,
+    `${magenta}${plan}${reset}`,
+  ];
+  if (showGitBranch) line1Parts.unshift(branchName);
   const currentDir = sanitizeTerminalText(state.currentDir || '', 80);
   if (showCurrentDir && currentDir) {
-    line1LeftParts.push(`${blue}${currentDir}${reset}`);
+    line1Parts.unshift(`${blue}${currentDir}${reset}`);
   }
-  if (showGitBranch) {
-    line1LeftParts.push(branchName);
-  }
-  const line1Left = line1LeftParts.join(' ');
-
-  // Line 1 Right
-  const line1RightParts = [
-    `${green}${modelName}${reset}`,
-  ];
-  if (plan) {
-    line1RightParts.push(`${magenta}${plan}${reset}`);
+  const username = sanitizeTerminalText(display.username || state.username || '', 80);
+  if (showUsername && username) {
+    line1Parts.unshift(`${cyan}${username}${reset}`);
   }
   if (updateInfo && updateInfo.updateAvailable) {
     const updateIcon = unicode ? '⟳' : '[UP]';
-    line1RightParts.push(`${yellow}${updateIcon} v${updateInfo.latestVersion}${reset}`);
+    line1Parts.push(`${yellow}${updateIcon} v${updateInfo.latestVersion}${reset}`);
   }
-  if (isCompact && currentModelQuota) {
-    const pct = Math.round(currentModelQuota.remainingFraction * 100);
-    const pctColor = pct <= (1 - critThresh) * 100 ? red : pct <= (1 - warnThresh) * 100 ? yellow : green;
-    let timeStr = '';
-    if (currentModelQuota.resetTime) {
-      const secsLeft = Math.max(0, Math.round((new Date(currentModelQuota.resetTime).getTime() - Date.now()) / 1000));
-      timeStr = ` ~${formatDuration(secsLeft)}`;
-    }
-    line1RightParts.push(`(${pctColor}Quota: ${pct}%${reset}${gray}${timeStr}${reset})`);
-  }
-  const line1Right = line1RightParts.join(' ');
+  const line1 = line1Parts.join(divider);
 
   const firstNumber = (...values) => values.find(value => Number.isFinite(value));
   const agyCurrentUsage = usage.current_usage || {};
@@ -282,32 +247,37 @@ function renderHUD(state, agyData, config, quotaData, tierName, updateInfo) {
   const ctxPctStr = `${Math.round(ctxPercent)}%`;
   const ctxStr = `${cyan}${ctxIcon}${formatTokens(totalInput)}/${formatTokens(usage.context_window_size || 0)}${reset} ${ctxBar} ${cyan}${ctxPctStr}${reset}`;
 
-  // Line 2 Left
-  const line2Left = showTokenBar ? tokensStr : '';
+  const quotaStyle = display.quotaStyle || 'table';
+  const isCompact = quotaStyle === 'compact';
 
-  // Line 2 Right
-  const line2Right = ctxStr;
-
-  // Layer 3: project metadata
-  let line3Left = '';
-  const breadcrumbCount = typeof display.breadcrumbCount === 'number'
-    ? Math.max(0, Math.floor(display.breadcrumbCount))
-    : 3;
-  if (showBreadcrumbs && breadcrumbCount > 0) {
-    if (Array.isArray(state.breadcrumbs) && state.breadcrumbs.length > 0) {
-      const parts = [];
-      for (const item of state.breadcrumbs.filter(Boolean).slice(-breadcrumbCount)) {
-        parts.push(`${gray}${sanitizeTerminalText(item)}${reset}`);
-      }
-      line3Left = parts.join(divider);
-    } else if (state.memoryFile) {
-      line3Left = `${gray}1 ${sanitizeTerminalText(state.memoryFile)}${reset}`;
-    }
+  // In compact mode, find current model's quota and append to line 2
+  let currentModelQuota = null;
+  if (isCompact && quotaData && quotaData.length > 0) {
+    const rawName = agyData?.model?.display_name || '';
+    const modelId = agyData?.model?.id || '';
+    currentModelQuota = quotaData.find(q =>
+      (modelId && q.id === modelId) ||
+      q.displayName === rawName ||
+      simplifyModelName(q.displayName) === modelName ||
+      modelNamesMatch(q.displayName, rawName)
+    );
   }
 
-  // Line 3 Right
-  const line3RightParts = [];
-  
+  // Layer 2: resource consumption
+  const line2Parts = [];
+  if (showTokenBar) line2Parts.push(tokensStr);
+  line2Parts.push(ctxStr);
+  if (isCompact && currentModelQuota) {
+    const pct = Math.round(currentModelQuota.remainingFraction * 100);
+    const pctColor = pct <= (1 - critThresh) * 100 ? red : pct <= (1 - warnThresh) * 100 ? yellow : green;
+    let timeStr = '';
+    if (currentModelQuota.resetTime) {
+      const secsLeft = Math.max(0, Math.round((new Date(currentModelQuota.resetTime).getTime() - Date.now()) / 1000));
+      timeStr = ` ${gray}~${formatDuration(secsLeft)}${reset}`;
+    }
+    line2Parts.push(`${pctColor}Quota: ${pct}%${reset}${timeStr}`);
+  }
+
   // Render Image Quota or rate limit exhaustion status
   const imageExhausted = state.imageExhausted;
   let isImageExhaustedDisplayed = false;
@@ -319,104 +289,70 @@ function renderHUD(state, agyData, config, quotaData, tierName, updateInfo) {
       const m = Math.floor((secsLeft % 3600) / 60);
       const countdownStr = `${pad(h)}h${pad(m)}m`;
       const icon = unicode ? '⚠️ ' : '[!] ';
-      line3RightParts.push(`${red}${icon}Image Quota Exhausted (Resets in: ${countdownStr})${reset}`);
+      line2Parts.push(`${red}${icon}Image Quota Exhausted (Resets in: ${countdownStr})${reset}`);
       isImageExhaustedDisplayed = true;
     }
   }
 
   if (!isImageExhaustedDisplayed) {
-    const imgQ = quotaData && quotaData.find(q => q.id && q.id.toLowerCase().includes('image'));
+    const imgQ = quotaData && quotaData.find(q => (q.id && q.id.includes('image')) || (q.displayName && q.displayName.toLowerCase().includes('image')));
     if (imgQ) {
       const pct = Math.round(imgQ.remainingFraction * 100);
       const pctColor = pct <= (1 - critThresh) * 100 ? red : pct <= (1 - warnThresh) * 100 ? yellow : green;
-      const bar = createProgressBar(pct, pctColor, 6, false); // 6-grid image progress bar
+      const bar = createProgressBar(pct, pctColor, 10, false);
       const imgIcon = unicode ? '🖼️ ' : '[IMG] ';
       let timeStr = '';
       if (imgQ.resetTime) {
         const secsLeft = Math.max(0, Math.round((new Date(imgQ.resetTime).getTime() - Date.now()) / 1000));
-        if (secsLeft > 0) timeStr = ` ~${formatDuration(secsLeft)}`;
+        if (secsLeft > 0) timeStr = ` ${gray}~${formatDuration(secsLeft)}${reset}`;
       }
-      line3RightParts.push(`${cyan}${imgIcon}Image Quota: ${bar} ${pctColor}${pct}%${reset}${gray}${timeStr}${reset}`);
+      line2Parts.push(`${cyan}${imgIcon}Image Quota: ${bar} ${pctColor}${pct}%${reset}${timeStr}`);
     }
+
   }
 
-  // Metadata stats
+  const line2 = line2Parts.join(divider);
+
+  // Layer 3: project metadata (non-zero items only)
+  const metaParts = [];
+  const breadcrumbCount = typeof display.breadcrumbCount === 'number'
+    ? Math.max(0, Math.floor(display.breadcrumbCount))
+    : 3;
+  if (showBreadcrumbs && breadcrumbCount > 0) {
+    if (Array.isArray(state.breadcrumbs) && state.breadcrumbs.length > 0) {
+      for (const item of state.breadcrumbs.filter(Boolean).slice(-breadcrumbCount)) {
+        metaParts.push(`${gray}${sanitizeTerminalText(item)}${reset}`);
+      }
+    } else if (state.memoryFile) {
+      metaParts.push(`${gray}1 ${sanitizeTerminalText(state.memoryFile)}${reset}`);
+    }
+  }
   const rulesCount = state.rulesCount || 0;
   const mcpCount = state.mcpCount || 0;
   const hooksCount = state.hooksCount || 0;
-  const bullet = unicode ? '•' : '*';
-  const metaStrParts = [];
-  if (rulesCount > 0) metaStrParts.push(`${gray}${rulesCount} rules${reset}`);
-  if (mcpCount > 0) metaStrParts.push(`${gray}${mcpCount} MCPs${reset}`);
-  if (hooksCount > 0) metaStrParts.push(`${gray}${hooksCount} hooks${reset}`);
-  if (metaStrParts.length > 0) {
-    line3RightParts.push(metaStrParts.join(` ${gray}${bullet}${reset} `));
-  }
-  const line3Right = line3RightParts.join('  ');
-
-  const getVisibleLength = (str) => sanitizeTerminalText(str).length;
-  const hasLine3 = getVisibleLength(line3Left) > 0 || getVisibleLength(line3Right) > 0;
-
-  // Width auto-stretching
-  const baseWidth = typeof display.columnWidth === 'number'
-    ? display.columnWidth
-    : DEFAULT_COLUMN_WIDTH;
-
-  const leftLengths = [
-    getVisibleLength(line1Left),
-    getVisibleLength(line2Left),
-  ];
-  if (hasLine3) leftLengths.push(getVisibleLength(line3Left));
-
-  const rightLengths = [
-    getVisibleLength(line1Right),
-    getVisibleLength(line2Right),
-  ];
-  if (hasLine3) rightLengths.push(getVisibleLength(line3Right));
-
-  const maxL = Math.max(...leftLengths);
-  const maxR = Math.max(...rightLengths);
-  const colWidth = Math.max(baseWidth, maxL, maxR);
-  const quotaNameWidth = Math.max(10, colWidth - QUOTA_CHROME_WIDTH);
-
-  const padToWidth = (str, width) => {
-    const len = getVisibleLength(str);
-    if (len >= width) return str;
-    return str + ' '.repeat(width - len);
-  };
-
-  const formatColumns = (left, right) => {
-    const leftPadded = padToWidth(left, colWidth);
-    const rightPadded = padToWidth(right, colWidth);
-    return `  ${leftPadded} ${gray}${glyph.vbar}${reset} ${rightPadded}`;
-  };
-
-  const line1 = formatColumns(line1Left, line1Right);
-  const line2 = formatColumns(line2Left, line2Right);
-  const line3 = hasLine3 ? formatColumns(line3Left, line3Right) : '';
-  const dividerLine = `  ${gray}${glyph.hbar.repeat(colWidth * 2 + 1)}${reset}`;
+  if (rulesCount > 0) metaParts.push(`${gray}${rulesCount} rules${reset}`);
+  if (mcpCount > 0) metaParts.push(`${gray}${mcpCount} MCPs${reset}`);
+  if (hooksCount > 0) metaParts.push(`${gray}${hooksCount} hooks${reset}`);
+  const line3 = metaParts.length > 0 ? metaParts.join(divider) : '';
 
   const { renderQuotaColumn, renderCompactQuotaLine } = createQuotaRenderers({
     colors: { cyan, reset, gray, red, yellow, green },
     glyph,
     thresholds: { warnThresh, critThresh },
-    nameWidth: quotaNameWidth,
+    nameWidth,
     divider,
     createProgressBar,
     truncateAndPad,
   });
 
-  const lines = [dividerLine, line1, line2];
-  if (line3) lines.push(line3);
-
-  // Build quota lines and close the box frame
+  // Build quota lines
+  let quotaLines = '';
   if (quotaData && quotaData.length > 0) {
     const now = Date.now();
     if (isCompact) {
-      const compactLine = `  ${renderCompactQuotaLine(quotaData, now)}`;
-      lines.push(dividerLine, compactLine, dividerLine);
+      quotaLines = `\n${renderCompactQuotaLine(quotaData, now)}`;
     } else {
-      const isImageModel = (q) => q.id && q.id.toLowerCase().includes('image');
+      const isImageModel = (q) => (q.id && q.id.includes('image')) || (q.displayName && q.displayName.toLowerCase().includes('image'));
       const tableQuota = quotaData.filter(q => !isImageModel(q));
       const cols = tableQuota.map(q => renderQuotaColumn(q, now));
 
@@ -427,26 +363,24 @@ function renderHUD(state, agyData, config, quotaData, tierName, updateInfo) {
         if (col2) {
           rows.push(`  ${col1} ${gray}${glyph.vbar}${reset} ${col2}`);
         } else {
-          rows.push(`  ${col1} ${gray}${glyph.vbar}${reset} ${' '.repeat(colWidth)}`);
+          rows.push(`  ${col1}`);
         }
       }
-      lines.push(dividerLine);
-      lines.push(...rows);
-      lines.push(dividerLine);
+      const dividerLine = `  ${gray}${glyph.hbar.repeat(columnWidth * 2 + 1)}${reset}`;
+      quotaLines = `\n${dividerLine}\n` + rows.join('\n') + `\n${dividerLine}`;
     }
   } else if (quotaData && quotaData.unavailableReason) {
+    const dividerLine = `  ${gray}${glyph.hbar.repeat(columnWidth * 2 + 1)}${reset}`;
     const reason = sanitizeTerminalText(text.quotaReasons[quotaData.unavailableReason] || quotaData.unavailableReason);
-    const diagLine = `  ${yellow}${text.quotaUnavailable}:${reset} ${gray}${reason}${reset}`;
-    lines.push(dividerLine, diagLine, dividerLine);
+    quotaLines = `\n${dividerLine}\n  ${yellow}${text.quotaUnavailable}:${reset} ${gray}${reason}${reset}\n${dividerLine}`;
   } else if (quotaData && quotaData.length === 0) {
-    const loadLine = `  ${gray}${text.quotaLoading}${glyph.ellipsis}${reset}`;
-    lines.push(dividerLine, loadLine, dividerLine);
-  } else {
-    // If no quotaData is requested (null/undefined), we still close the box frame with the bottom line
-    lines.push(dividerLine);
+    const dividerLine = `  ${gray}${glyph.hbar.repeat(columnWidth * 2 + 1)}${reset}`;
+    quotaLines = `\n${dividerLine}\n  ${gray}${text.quotaLoading}${glyph.ellipsis}${reset}\n${dividerLine}`;
   }
 
-  return lines.join('\n');
+  const lines = [line1, line2];
+  if (line3) lines.push(line3);
+  return lines.join('\n') + quotaLines;
 }
 
 module.exports = {
