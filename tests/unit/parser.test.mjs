@@ -5,7 +5,22 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { getSessionState } from '../../runtime/parser.js';
+import { createRequire } from 'node:module';
+
+const testDataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'agy-hud-test-parser-'));
+const previousDataDir = process.env.AGY_HUD_DATA_DIR;
+process.env.AGY_HUD_DATA_DIR = testDataDir;
+
+const require = createRequire(import.meta.url);
+const { getSessionState } = require('../../runtime/parser.js');
+
+
+
+process.on('exit', () => {
+  try {
+    fs.rmSync(testDataDir, { recursive: true, force: true });
+  } catch {}
+});
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);

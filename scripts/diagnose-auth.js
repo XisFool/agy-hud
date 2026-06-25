@@ -146,7 +146,7 @@ function sanitizeReadTokenResult(token) {
 
   return compactObject({
     found: true,
-    sourceFormat: token.sourceFormat || (Array.isArray(token.all) ? 'windows-credential' : undefined),
+    sourceFormat: token.sourceFormat || undefined,
     sourcePath: token.sourcePath || undefined,
     hasExpiry: Boolean(token.expiry),
     tokenCount: Array.isArray(token.all) ? token.all.length : 1,
@@ -171,7 +171,7 @@ function buildAuthDiagnostic(options = {}) {
       exists: pathExists(root),
     })),
     tokenCandidates: getTokenCandidates(roots).map(summarizeTokenCandidate),
-    readToken: sanitizeReadTokenResult(readToken({ platform })),
+    readToken: sanitizeReadTokenResult(readToken({ platform, keyringReader: options.keyringReader })),
   };
 }
 

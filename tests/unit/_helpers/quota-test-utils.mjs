@@ -1,6 +1,21 @@
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
-import quotaModule from '../../../runtime/quota.js';
+import { createRequire } from 'node:module';
+
+const testDataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'agy-hud-test-data-'));
+const previousDataDir = process.env.AGY_HUD_DATA_DIR;
+process.env.AGY_HUD_DATA_DIR = testDataDir;
+
+const require = createRequire(import.meta.url);
+delete require.cache[require.resolve('../../../runtime/quota.js')];
+const quotaModule = require('../../../runtime/quota.js');
+
+process.on('exit', () => {
+  try {
+    fs.rmSync(testDataDir, { recursive: true, force: true });
+  } catch {}
+});
 
 export { quotaModule };
 export const { CACHE_PATH } = quotaModule;
@@ -10,11 +25,15 @@ try {
 } catch {}
 
 export function withEnv(overrides, fn) {
+  const fullOverrides = {
+    AGY_HUD_DATA_DIR: undefined,
+    ...overrides,
+  };
   const snapshot = {};
-  for (const key of Object.keys(overrides)) {
+  for (const key of Object.keys(fullOverrides)) {
     snapshot[key] = process.env[key];
-    if (overrides[key] === undefined) delete process.env[key];
-    else process.env[key] = overrides[key];
+    if (fullOverrides[key] === undefined) delete process.env[key];
+    else process.env[key] = fullOverrides[key];
   }
   try {
     return fn();

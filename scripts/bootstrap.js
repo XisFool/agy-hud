@@ -225,7 +225,7 @@ async function installRuntime(options = {}) {
   const result = configureStatusLine(path.join(runtimeDir, 'runtime'), {
     settingsPath: path.join(antigravityRoot, 'settings.json'),
   });
-  const quotaRefresh = await refreshQuotaCache(runtimeDir, { env, homeDir, platform: options.platform });
+  const quotaRefresh = await refreshQuotaCache(runtimeDir, { env, homeDir, platform: options.platform, keyringReader: options.keyringReader });
 
   return {
     antigravityRoot,
@@ -245,7 +245,7 @@ async function refreshQuotaCache(runtimeDir, options = {}) {
     const { readToken, fetchQuotaFromCloud, fetchTierFromCloud, writeCache, isTokenExpired } = require(quotaPath);
     const env = options.env || process.env;
     const roots = getAntigravityRoots(env, options.homeDir || os.homedir());
-    const token = readToken({ roots, platform: options.platform || process.platform });
+    const token = readToken({ roots, platform: options.platform || process.platform, keyringReader: options.keyringReader });
     if (!token) return { status: 'skipped', reason: 'not_logged_in' };
     if (isTokenExpired(token)) return { status: 'skipped', reason: 'expired_token' };
 

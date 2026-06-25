@@ -6,12 +6,20 @@ import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { createRequire } from 'node:module';
-import quotaModule from '../../runtime/quota.js';
+import { CACHE_PATH } from './_helpers/quota-test-utils.mjs';
 
-const { CACHE_PATH } = quotaModule;
+const testDataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'agy-hud-test-bootstrap-'));
+process.env.AGY_HUD_DATA_DIR = testDataDir;
+
 try {
   fs.mkdirSync(path.dirname(CACHE_PATH), { recursive: true });
 } catch {}
+
+process.on('exit', () => {
+  try {
+    fs.rmSync(testDataDir, { recursive: true, force: true });
+  } catch {}
+});
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -117,6 +125,7 @@ test('bootstrap refreshes quota cache during setup when a token is available', a
       homeDir: home,
       sourceDir: projectRoot,
       platform: 'linux',
+      keyringReader: () => null,
       env: {
         ...process.env,
         HOME: home,
@@ -170,6 +179,7 @@ test('bootstrap skips quota refresh when the available token is expired', async 
       homeDir: home,
       sourceDir: projectRoot,
       platform: 'linux',
+      keyringReader: () => null,
       env: {
         ...process.env,
         HOME: home,

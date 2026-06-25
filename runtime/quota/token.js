@@ -59,7 +59,45 @@ function isTokenExpired(token, now = Date.now()) {
 
 function tokenResultFromTokens(tokens) {
   if (!tokens || tokens.length === 0) return null;
-  return { accessToken: tokens[0].accessToken, all: tokens };
+  return {
+    accessToken: tokens[0].accessToken,
+    expiry: tokens[0].expiry,
+    sourceFormat: tokens[0].sourceFormat,
+    all: tokens,
+  };
+}
+
+function normalizeKeyringTokenResult(token) {
+  if (!token) return null;
+  if (typeof token === 'string') {
+    return {
+      accessToken: token,
+      sourceFormat: 'linux-keyring',
+      all: [{ accessToken: token, sourceFormat: 'linux-keyring' }],
+    };
+  }
+  if (typeof token === 'object') {
+    return {
+      ...token,
+      sourceFormat: token.sourceFormat || 'linux-keyring',
+    };
+  }
+  return null;
+}
+
+function resolveTokenTempPath(roots = getAntigravityRoots()) {
+  const candidates = (Array.isArray(roots) ? roots : [])
+    .filter(Boolean)
+    .map(root => path.join(root, 'agy-hud-token.json'));
+
+  for (const candidate of candidates) {
+    try {
+      if (fs.existsSync(candidate)) return candidate;
+    } catch { /* ignore */ }
+  }
+
+  if (candidates.length > 0) return candidates[0];
+  return resolveAntigravityPath('agy-hud-token.json');
 }
 
 function normalizeExpiryDate(value) {
@@ -98,10 +136,10 @@ function parseTokenPayload(raw) {
   return null;
 }
 
-function writeWindowsTokenTemp(tokens) {
+function writeWindowsTokenTemp(tokens, roots = getAntigravityRoots()) {
   if (!Array.isArray(tokens) || tokens.length === 0) return;
   try {
-    const tmp = resolveAntigravityPath('agy-hud-token.json');
+    const tmp = resolveTokenTempPath(roots);
     fs.mkdirSync(path.dirname(tmp), { recursive: true });
     // mode 0o600 — the file holds OAuth access tokens, so keep permissions
     // narrow even though this is only a short-lived mirror.
@@ -109,9 +147,9 @@ function writeWindowsTokenTemp(tokens) {
   } catch { /* best-effort cache */ }
 }
 
-function readWindowsTokenTemp() {
+function readWindowsTokenTemp(roots = getAntigravityRoots()) {
   try {
-    const tmp = resolveAntigravityPath('agy-hud-token.json');
+    const tmp = resolveTokenTempPath(roots);
     const raw = JSON.parse(fs.readFileSync(tmp, 'utf8'));
     return tokenResultFromTokens(selectUsableTokens(raw.tokens, raw.writtenAt));
   } catch {
@@ -172,7 +210,7 @@ function buildWindowsCredentialScript() {
   ].join('\n');
 }
 
-function readWindowsCredentialTokens(platform = process.platform) {
+function readWindowsCredentialTokens(platform = process.platform, roots = getAntigravityRoots()) {
   if (platform !== 'win32') return null;
 
   try {
@@ -191,10 +229,67 @@ function readWindowsCredentialTokens(platform = process.platform) {
       windowsHide: true,
     });
     const parsed = JSON.parse(raw.trim() || '{"tokens":[]}');
-    const valid = selectUsableTokens(parsed.tokens, Date.now());
+    const valid = selectUsableTokens(parsed.tokens, Date.now())
+      .map(token => ({ ...token, sourceFormat: 'windows-credential' }));
     if (valid.length === 0) return null;
-    writeWindowsTokenTemp(valid);
-    return tokenResultFromTokens(valid);
+    writeWindowsTokenTemp(valid, roots);
+    return { ...tokenResultFromTokens(valid), sourceFormat: 'windows-credential' };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Reads the OAuth token stored in the Linux Keyring (D-Bus Secret Service)
+ * by delegating to python3, which ships with the `keyring` library used by agy.
+ *
+ * To avoid spawning a python3 subprocess on every statusline refresh, a
+ * successful read is written to the same short-lived JSON cache that the
+ * Windows Credential Manager path uses.
+ *
+ * @param {string} [platform]
+ * @returns {{ accessToken: string, expiry?: string, sourceFormat?: string, all: Array<{ accessToken: string, expiry?: string }> } | null}
+ */
+function readLinuxKeyringTokens(platform = process.platform, roots = getAntigravityRoots()) {
+  if (platform !== 'linux') return null;
+
+  try {
+    const pythonPath = resolveSafeExecutable('python3') || resolveSafeExecutable('python');
+    if (!pythonPath) return null;
+
+    const raw = execFileSync(pythonPath, [
+      '-c',
+      "import keyring; print(keyring.get_password('gemini', 'antigravity') or '')",
+    ], {
+      encoding: 'utf8',
+      timeout: 5000,
+    });
+
+    const trimmed = raw.trim();
+    if (!trimmed) return null;
+
+    let parsed;
+    try {
+      parsed = JSON.parse(trimmed);
+    } catch {
+      parsed = trimmed;
+    }
+
+    const token = typeof parsed === 'string'
+      ? (!/\s/.test(parsed) ? { accessToken: parsed } : null)
+      : parseTokenPayload(parsed);
+    if (!token) return null;
+
+    // Mirror into the shared temp cache so subsequent statusline renders
+    // do not need to re-spawn python3.
+    const tokens = [{
+      accessToken: token.accessToken,
+      expiry: token.expiry,
+      sourceFormat: 'linux-keyring',
+    }];
+    writeWindowsTokenTemp(tokens, roots);
+
+    return { ...token, sourceFormat: 'linux-keyring', all: tokens };
   } catch {
     return null;
   }
@@ -209,18 +304,29 @@ function readToken(options = {}) {
     roots = getAntigravityRoots(),
     skipWindowsCredential = false,
     credentialReader = readWindowsCredentialTokens,
+    keyringReader = readLinuxKeyringTokens,
   } = options;
 
   // Windows: agy stores its OAuth token in Credential Manager. Keep a short
   // JSON mirror so normal statusline renders do not spawn PowerShell every time.
   if (platform === 'win32') {
-    const tempToken = readWindowsTokenTemp();
-    if (tempToken) return tempToken;
+    const tempToken = readWindowsTokenTemp(roots);
+    if (tempToken) return { ...tempToken, sourceFormat: tempToken.sourceFormat || 'windows-credential' };
 
     if (!skipWindowsCredential) {
-      const credentialToken = credentialReader(platform);
+      const credentialToken = credentialReader(platform, roots);
       if (credentialToken) return credentialToken;
     }
+  }
+
+  // Linux: agy stores its OAuth token in the system keyring (D-Bus Secret
+  // Service). Check the short-lived JSON cache first; fall back to python3.
+  if (platform === 'linux') {
+    const tempToken = readWindowsTokenTemp(roots);
+    if (tempToken) return { ...tempToken, sourceFormat: tempToken.sourceFormat || 'linux-keyring' };
+
+    const keyringToken = normalizeKeyringTokenResult(keyringReader(platform, roots));
+    if (keyringToken) return keyringToken;
   }
 
   for (const candidate of getTokenCandidates(roots)) {
@@ -259,6 +365,7 @@ module.exports = {
   readWindowsTokenTemp,
   buildWindowsCredentialScript,
   readWindowsCredentialTokens,
+  readLinuxKeyringTokens,
   readToken,
   anyTokenFileExists,
 };

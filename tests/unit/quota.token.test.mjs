@@ -108,10 +108,10 @@ describe('quota / token', () => {
           APPDATA: undefined,
           LOCALAPPDATA: undefined,
         }, () => {
-          assert.equal(readToken({ platform: 'linux' }).accessToken, 'antigravity-token');
+          assert.equal(readToken({ platform: 'linux', keyringReader: () => null }).accessToken, 'antigravity-token');
 
           fs.rmSync(antigravityTokenPath);
-          assert.equal(readToken({ platform: 'linux' }), null);
+          assert.equal(readToken({ platform: 'linux', keyringReader: () => null }), null);
         });
       } finally {
         fs.rmSync(tmp, { recursive: true, force: true });
@@ -139,7 +139,7 @@ describe('quota / token', () => {
           APPDATA: undefined,
           LOCALAPPDATA: undefined,
         }, () => {
-          const token = readToken({ platform: 'linux' });
+          const token = readToken({ platform: 'linux', keyringReader: () => null });
           assert.equal(token.accessToken, 'oauth-creds-token');
           assert.equal(token.sourceFormat, 'oauth-creds');
           assert.equal(token.sourcePath.endsWith(path.join('.gemini', 'oauth_creds.json')), true);
@@ -187,12 +187,102 @@ describe('quota / token', () => {
             platform: 'win32',
             credentialReader: () => {
               credentialReads += 1;
-              return { accessToken: 'credential-token' };
+              return { accessToken: 'credential-token', sourceFormat: 'windows-credential' };
             },
           });
 
           assert.equal(token.accessToken, 'credential-token');
+          assert.equal(token.sourceFormat, 'windows-credential');
           assert.equal(credentialReads, 1);
+        });
+      } finally {
+        fs.rmSync(tmp, { recursive: true, force: true });
+      }
+    });
+    test('reads token from Linux Keyring when no token file exists', () => {
+      const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'agy-hud-token-linux-keyring-'));
+      try {
+        const home = path.join(tmp, 'home');
+        fs.mkdirSync(path.join(home, '.gemini'), { recursive: true });
+        let keyringReads = 0;
+
+        withEnv({
+          HOME: home,
+          USERPROFILE: home,
+          XDG_DATA_HOME: undefined,
+          APPDATA: undefined,
+          LOCALAPPDATA: undefined,
+        }, () => {
+          const token = readToken({
+            platform: 'linux',
+            keyringReader: () => {
+              keyringReads += 1;
+              return {
+                accessToken: 'linux-keyring-token',
+                sourceFormat: 'linux-keyring',
+                all: [{ accessToken: 'linux-keyring-token' }],
+              };
+            },
+          });
+
+          assert.equal(token.accessToken, 'linux-keyring-token');
+          assert.equal(token.sourceFormat, 'linux-keyring');
+          assert.equal(keyringReads, 1);
+        });
+      } finally {
+        fs.rmSync(tmp, { recursive: true, force: true });
+      }
+    });
+
+    test('falls back to token file when Linux Keyring returns null', () => {
+      const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'agy-hud-token-linux-fallback-'));
+      try {
+        const home = path.join(tmp, 'home');
+        fs.mkdirSync(path.join(home, '.gemini', 'antigravity-cli'), { recursive: true });
+        fs.writeFileSync(
+          path.join(home, '.gemini', 'antigravity-cli', 'antigravity-oauth-token'),
+          JSON.stringify({ token: { access_token: 'file-token' } })
+        );
+
+        withEnv({
+          HOME: home,
+          USERPROFILE: home,
+          XDG_DATA_HOME: undefined,
+          APPDATA: undefined,
+          LOCALAPPDATA: undefined,
+        }, () => {
+          const token = readToken({
+            platform: 'linux',
+            keyringReader: () => null,
+          });
+
+          assert.equal(token.accessToken, 'file-token');
+        });
+      } finally {
+        fs.rmSync(tmp, { recursive: true, force: true });
+      }
+    });
+
+    test('accepts raw Linux Keyring token strings', () => {
+      const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'agy-hud-token-linux-raw-'));
+      try {
+        const home = path.join(tmp, 'home');
+        fs.mkdirSync(path.join(home, '.gemini'), { recursive: true });
+
+        withEnv({
+          HOME: home,
+          USERPROFILE: home,
+          XDG_DATA_HOME: undefined,
+          APPDATA: undefined,
+          LOCALAPPDATA: undefined,
+        }, () => {
+          const token = readToken({
+            platform: 'linux',
+            keyringReader: () => 'linux-raw-token',
+          });
+
+          assert.equal(token.accessToken, 'linux-raw-token');
+          assert.equal(token.sourceFormat, 'linux-keyring');
         });
       } finally {
         fs.rmSync(tmp, { recursive: true, force: true });
