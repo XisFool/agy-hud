@@ -14,12 +14,12 @@ process.env.AGY_HUD_DATA_DIR = testDataDir;
 const require = createRequire(import.meta.url);
 const { getSessionState } = require('../../runtime/parser.js');
 
-
-
 process.on('exit', () => {
   try {
     fs.rmSync(testDataDir, { recursive: true, force: true });
   } catch {}
+  if (previousDataDir === undefined) delete process.env.AGY_HUD_DATA_DIR;
+  else process.env.AGY_HUD_DATA_DIR = previousDataDir;
 });
 
 const __filename = fileURLToPath(import.meta.url);

@@ -90,12 +90,9 @@ function resolveTokenTempPath(roots = getAntigravityRoots()) {
     .filter(Boolean)
     .map(root => path.join(root, 'agy-hud-token.json'));
 
-  for (const candidate of candidates) {
-    try {
-      if (fs.existsSync(candidate)) return candidate;
-    } catch { /* ignore */ }
-  }
-
+  // Always use the first candidate as the canonical path so that read and
+  // write operations always target the same file, regardless of whether it
+  // already exists.
   if (candidates.length > 0) return candidates[0];
   return resolveAntigravityPath('agy-hud-token.json');
 }
@@ -325,7 +322,7 @@ function readToken(options = {}) {
     const tempToken = readWindowsTokenTemp(roots);
     if (tempToken) return { ...tempToken, sourceFormat: tempToken.sourceFormat || 'linux-keyring' };
 
-    const keyringToken = normalizeKeyringTokenResult(keyringReader(platform, roots));
+    const keyringToken = normalizeKeyringTokenResult(keyringReader(roots));
     if (keyringToken) return keyringToken;
   }
 
