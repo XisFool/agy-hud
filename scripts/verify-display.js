@@ -322,7 +322,7 @@ async function main() {
   const env = buildEnv(tmpRoot);
   const { server, url } = await startZipServer();
   try {
-    const install = await run(agyBin, ['plugin', 'install', url], { env, timeout: 120_000 });
+    const install = await run(agyBin, ['plugin', 'install', projectRoot], { env, timeout: 120_000 });
 
     // Upgrade-from-old-version scenario: plant a fake stale hooks.json in the
     // staged plugin dir BEFORE bootstrap. v0.1.x left this behind in real
