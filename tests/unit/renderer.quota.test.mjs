@@ -111,6 +111,30 @@ describe('renderer / quota lines', () => {
       const output = renderHUD(state, agyData, { display: { unicode: true, useNerdFonts: false } }, quotaData);
       assert.match(output, /\x1b\[31m\[/);
     });
+
+    test('renders 0% when 5-hour window is exhausted even if top-level remainingFraction is 1', () => {
+      const state = { steps: 0, branch: 'main' };
+      const agyData = { context_window: { total_input_tokens: 0, total_output_tokens: 0, used_percentage: 0 } };
+      const now = Date.now();
+      const quotaData = [{
+        id: 'gemini-3-flash-agent',
+        displayName: 'Gemini 3.5 Flash (High)',
+        modelProvider: 'MODEL_PROVIDER_GOOGLE',
+        remainingFraction: 1.0, // Top-level weekly is 1.0
+        resetTime: new Date(now + 100 * 3600 * 1000).toISOString(),
+        windows: {
+          fiveHour: { remainingFraction: 0, resetTime: new Date(now + 2 * 3600 * 1000).toISOString(), observedAt: now },
+          weekly:   { remainingFraction: 1.0, resetTime: new Date(now + 100 * 3600 * 1000).toISOString(), observedAt: now },
+        },
+      }];
+      const stripAnsi = s => s.replace(/\x1b\[[0-9;]*m/g, '');
+      const output = stripAnsi(renderHUD(state, agyData, { display: { useNerdFonts: false, unicode: true } }, quotaData));
+
+      const modelLine = output.split('\n').find(l => l.includes('Gemini 3.5 Flash(H)'));
+      assert.ok(modelLine, 'model row exists');
+      assert.match(modelLine, /\b0%/);
+      assert.doesNotMatch(modelLine, /100%/);
+    });
   });
 
   describe('compact mode', () => {

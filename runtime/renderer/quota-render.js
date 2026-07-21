@@ -31,13 +31,16 @@ const {
  * @param {Function} ctx.createProgressBar  (percent, color, width, isUsage) => string
  * @param {Function} ctx.truncateAndPad     (str, width) => string
  */
+const { pickCriticalWindow } = require('../quota/models.js');
+
 function createQuotaRenderers(ctx) {
   const { colors, glyph, thresholds, nameWidth, divider, createProgressBar, truncateAndPad } = ctx;
   const { cyan, reset, gray, red, yellow, green } = colors;
   const { warnThresh, critThresh } = thresholds;
 
   const renderQuotaColumn = (q, now) => {
-    const pct = formatQuotaPercent(q.remainingFraction);
+    const critical = pickCriticalWindow(q.windows, now) || q;
+    const pct = formatQuotaPercent(critical.remainingFraction);
     const pctColor = pct <= (1 - critThresh) * 100 ? red
                    : pct <= (1 - warnThresh) * 100 ? yellow
                    : green;
@@ -52,8 +55,9 @@ function createQuotaRenderers(ctx) {
     const coloredPct = `${pctColor}${pctStr}${reset}`;
 
     let rawTime = '';
-    if (q.resetTime) {
-      const resetMs = new Date(q.resetTime).getTime();
+    const resetTime = critical.resetTime || q.resetTime;
+    if (resetTime) {
+      const resetMs = new Date(resetTime).getTime();
       const secsLeft = Math.max(0, Math.round((resetMs - now) / 1000));
       rawTime = `~${formatDuration(secsLeft)}`;
     }
