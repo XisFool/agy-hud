@@ -369,7 +369,7 @@ function readToken(options = {}) {
     const tempToken = readWindowsTokenTemp(roots);
     if (tempToken) return { ...tempToken, sourceFormat: tempToken.sourceFormat || 'linux-keyring' };
 
-    const keyringToken = normalizeKeyringTokenResult(keyringReader(roots));
+    const keyringToken = normalizeKeyringTokenResult(keyringReader(platform, roots));
     if (keyringToken) return keyringToken;
   }
 

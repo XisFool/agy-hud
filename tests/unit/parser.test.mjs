@@ -7,6 +7,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createRequire } from 'node:module';
 
+const previousDataDir = process.env.AGY_HUD_DATA_DIR;
 const testDataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'agy-hud-test-parser-'));
 process.env.AGY_HUD_DATA_DIR = testDataDir;
 

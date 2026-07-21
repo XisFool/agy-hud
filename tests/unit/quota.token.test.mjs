@@ -288,5 +288,37 @@ describe('quota / token', () => {
         fs.rmSync(tmp, { recursive: true, force: true });
       }
     });
+
+    test('passes platform and roots arguments to keyringReader on Linux', () => {
+      const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'agy-hud-token-linux-args-'));
+      try {
+        const home = path.join(tmp, 'home');
+        fs.mkdirSync(path.join(home, '.gemini'), { recursive: true });
+        let passedPlatform = null;
+        let passedRoots = null;
+
+        withEnv({
+          HOME: home,
+          USERPROFILE: home,
+          XDG_DATA_HOME: undefined,
+          APPDATA: undefined,
+          LOCALAPPDATA: undefined,
+        }, () => {
+          readToken({
+            platform: 'linux',
+            keyringReader: (platform, roots) => {
+              passedPlatform = platform;
+              passedRoots = roots;
+              return null;
+            },
+          });
+
+          assert.equal(passedPlatform, 'linux');
+          assert.equal(Array.isArray(passedRoots), true);
+        });
+      } finally {
+        fs.rmSync(tmp, { recursive: true, force: true });
+      }
+    });
   });
 });
