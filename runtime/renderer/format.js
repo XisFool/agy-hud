@@ -121,6 +121,18 @@ function sanitizeTerminalText(value, maxLength = 120) {
     .slice(0, maxLength);
 }
 
+/**
+ * Format remainingFraction into an integer percentage.
+ * Clamps non-100% values (e.g. 0.9953883) to at most 99% so that
+ * fractional usage does not get rounded up to 100% and look stuck.
+ */
+function formatQuotaPercent(fraction) {
+  if (fraction === undefined || fraction === null || Number.isNaN(fraction)) return 0;
+  if (fraction >= 1) return 100;
+  if (fraction <= 0) return 0;
+  return Math.min(99, Math.max(0, Math.floor(fraction * 100)));
+}
+
 module.exports = {
   ANSI_COLORS,
   DEFAULT_THRESHOLDS,
@@ -136,4 +148,5 @@ module.exports = {
   sanitizeTerminalText,
   formatTokens,
   formatDuration,
+  formatQuotaPercent,
 };

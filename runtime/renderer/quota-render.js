@@ -8,6 +8,7 @@ const {
   compactModelName,
   sanitizeTerminalText,
   formatDuration,
+  formatQuotaPercent,
 } = require('./format.js');
 
 /**
@@ -36,7 +37,7 @@ function createQuotaRenderers(ctx) {
   const { warnThresh, critThresh } = thresholds;
 
   const renderQuotaColumn = (q, now) => {
-    const pct = Math.round(q.remainingFraction * 100);
+    const pct = formatQuotaPercent(q.remainingFraction);
     const pctColor = pct <= (1 - critThresh) * 100 ? red
                    : pct <= (1 - warnThresh) * 100 ? yellow
                    : green;
@@ -74,7 +75,7 @@ function createQuotaRenderers(ctx) {
     for (const [provider, models] of groups) {
       const items = models.map(q => {
         const name = sanitizeTerminalText(compactModelName(q.displayName || q.id), 20);
-        const pct = Math.round(q.remainingFraction * 100);
+        const pct = formatQuotaPercent(q.remainingFraction);
         const filled = Math.round((pct / 100) * 3);
         const empty = 3 - filled;
         const barColor = pct <= (1 - critThresh) * 100 ? red : pct <= (1 - warnThresh) * 100 ? yellow : green;

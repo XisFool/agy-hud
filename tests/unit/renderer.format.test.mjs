@@ -1,6 +1,6 @@
 import { describe, test } from 'node:test';
 import assert from 'node:assert';
-import { abbreviateDisplayName, compactModelName } from '../../runtime/renderer.js';
+import { abbreviateDisplayName, compactModelName, formatQuotaPercent } from '../../runtime/renderer.js';
 
 describe('renderer / format helpers', () => {
   describe('abbreviateDisplayName', () => {
@@ -35,6 +35,17 @@ describe('renderer / format helpers', () => {
       assert.equal(compactModelName('Claude Sonnet 4.6 (Thinking)'), 'Sonnet');
       assert.equal(compactModelName('Claude Opus 4.6 (Thinking)'), 'Opus');
       assert.equal(compactModelName('GPT-OSS 120B (Medium)'), 'GPT');
+    });
+  });
+
+  describe('formatQuotaPercent', () => {
+    test('formats percentage accurately without rounding 0.995 up to 100%', () => {
+      assert.equal(formatQuotaPercent(1.0), 100);
+      assert.equal(formatQuotaPercent(0.9953883), 99);
+      assert.equal(formatQuotaPercent(0.9999), 99);
+      assert.equal(formatQuotaPercent(0.5), 50);
+      assert.equal(formatQuotaPercent(0.0), 0);
+      assert.equal(formatQuotaPercent(null), 0);
     });
   });
 });

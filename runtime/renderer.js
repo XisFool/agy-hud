@@ -263,12 +263,14 @@ function renderHUD(state, agyData, config, quotaData, tierName, updateInfo) {
     );
   }
 
+  const formatQuotaPercent = require('./renderer/format.js').formatQuotaPercent;
+
   // Layer 2: resource consumption
   const line2Parts = [];
   if (showTokenBar) line2Parts.push(tokensStr);
   line2Parts.push(ctxStr);
   if (isCompact && currentModelQuota) {
-    const pct = Math.round(currentModelQuota.remainingFraction * 100);
+    const pct = formatQuotaPercent(currentModelQuota.remainingFraction);
     const pctColor = pct <= (1 - critThresh) * 100 ? red : pct <= (1 - warnThresh) * 100 ? yellow : green;
     let timeStr = '';
     if (currentModelQuota.resetTime) {
@@ -297,7 +299,7 @@ function renderHUD(state, agyData, config, quotaData, tierName, updateInfo) {
   if (!isImageExhaustedDisplayed) {
     const imgQ = quotaData && quotaData.find(q => (q.id && q.id.includes('image')) || (q.displayName && q.displayName.toLowerCase().includes('image')));
     if (imgQ) {
-      const pct = Math.round(imgQ.remainingFraction * 100);
+      const pct = formatQuotaPercent(imgQ.remainingFraction);
       const pctColor = pct <= (1 - critThresh) * 100 ? red : pct <= (1 - warnThresh) * 100 ? yellow : green;
       const bar = createProgressBar(pct, pctColor, 10, false);
       const imgIcon = unicode ? '🖼️ ' : '[IMG] ';
@@ -383,8 +385,11 @@ function renderHUD(state, agyData, config, quotaData, tierName, updateInfo) {
   return lines.join('\n') + quotaLines;
 }
 
+const { formatQuotaPercent } = require('./renderer/format.js');
+
 module.exports = {
   renderHUD,
   abbreviateDisplayName,
   compactModelName,
+  formatQuotaPercent,
 };
