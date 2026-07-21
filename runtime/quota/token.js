@@ -392,6 +392,13 @@ function anyTokenFileExists(roots = getAntigravityRoots()) {
   return false;
 }
 
+function clearTokenTemp(roots = getAntigravityRoots()) {
+  try {
+    const tmp = resolveTokenTempPath(roots);
+    if (fs.existsSync(tmp)) fs.unlinkSync(tmp);
+  } catch { /* best effort */ }
+}
+
 module.exports = {
   ANTIGRAVITY_TOKEN_FILENAME,
   OAUTH_CREDS_FILENAME,
@@ -409,6 +416,7 @@ module.exports = {
   parseTokenPayload,
   writeWindowsTokenTemp,
   readWindowsTokenTemp,
+  clearTokenTemp,
   buildWindowsCredentialScript,
   readWindowsCredentialTokens,
   readLinuxKeyringTokens,

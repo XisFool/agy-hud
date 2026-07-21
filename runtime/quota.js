@@ -157,9 +157,9 @@ if (process.argv.includes('--refresh')) {
           fetchTierFromCloud(tok.accessToken),
           fetchAccountEmail(tok.accessToken),
         ]);
-        // Write when we got quota OR an email: an ineligible/just-switched
-        // account may return no quota yet still needs its email cached.
-        if (fresh.length > 0 || accountEmail) {
+        if (fresh && fresh.unavailableReason === 'auth_failed') {
+          tokenMod.clearTokenTemp();
+        } else if (fresh.length > 0 || accountEmail) {
           writeCache(fresh, tok, tier, accountEmail);
         }
       }
@@ -183,6 +183,7 @@ module.exports = {
   getCachedAccountEmail: cacheMod.getCachedAccountEmail,
   // token module
   readToken,
+  clearTokenTemp: tokenMod.clearTokenTemp,
   readWindowsCredentialTokens,
   readLinuxKeyringTokens: tokenMod.readLinuxKeyringTokens,
   probeLinuxKeyringAvailability: tokenMod.probeLinuxKeyringAvailability,

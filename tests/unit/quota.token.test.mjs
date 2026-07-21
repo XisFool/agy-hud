@@ -10,6 +10,7 @@ const {
   isTokenExpired,
   parseTokenPayload,
   readToken,
+  clearTokenTemp,
 } = quotaModule;
 
 describe('quota / token', () => {
@@ -315,6 +316,30 @@ describe('quota / token', () => {
 
           assert.equal(passedPlatform, 'linux');
           assert.equal(Array.isArray(passedRoots), true);
+        });
+      } finally {
+        fs.rmSync(tmp, { recursive: true, force: true });
+      }
+    });
+
+    test('clearTokenTemp removes existing temporary token cache file', () => {
+      const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'agy-hud-token-clear-'));
+      try {
+        const home = path.join(tmp, 'home');
+        const cliDir = path.join(home, '.gemini', 'antigravity-cli');
+        fs.mkdirSync(cliDir, { recursive: true });
+        const tokenFile = path.join(cliDir, 'agy-hud-token.json');
+        fs.writeFileSync(tokenFile, JSON.stringify({ tokens: [{ accessToken: 'stale' }] }));
+
+        withEnv({
+          HOME: home,
+          USERPROFILE: home,
+          XDG_DATA_HOME: undefined,
+          APPDATA: undefined,
+          LOCALAPPDATA: undefined,
+        }, () => {
+          clearTokenTemp([cliDir]);
+          assert.equal(fs.existsSync(tokenFile), false);
         });
       } finally {
         fs.rmSync(tmp, { recursive: true, force: true });
